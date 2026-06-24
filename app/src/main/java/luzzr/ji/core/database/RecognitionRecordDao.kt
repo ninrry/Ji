@@ -14,6 +14,19 @@ interface RecognitionRecordDao {
     @Query("SELECT * FROM recognition_records WHERE id = :id")
     suspend fun getById(id: String): RecognitionRecordEntity?
 
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM recognition_records
+            WHERE eventFingerprint = :fingerprint
+              AND capturedAt BETWEEN :fromCapturedAt AND :toCapturedAt
+        )
+    """)
+    suspend fun hasRecordWithFingerprintBetween(
+        fingerprint: String,
+        fromCapturedAt: Long,
+        toCapturedAt: Long
+    ): Boolean
+
     @Query("UPDATE recognition_records SET status = 'PROCESSING', attemptCount = attemptCount + 1, errorMessage = NULL WHERE id = :id AND status IN ('PENDING', 'RETRY')")
     suspend fun claim(id: String): Int
 

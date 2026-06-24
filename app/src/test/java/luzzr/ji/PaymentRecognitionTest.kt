@@ -102,7 +102,7 @@ class PaymentRecognitionTest {
     }
 
     @Test
-    fun `fallback transaction key preserves distinct page fingerprints inside a five minute window`() {
+    fun `fallback transaction key preserves duplicate candidates but permits a later same amount payment`() {
         val result = VlmTransactionResult(
             amount = 1880,
             category = "购物",
@@ -111,7 +111,7 @@ class PaymentRecognitionTest {
             paymentKind = PaymentKind.MERCHANT_PAYMENT
         )
         val first = PaymentRecognitionManager.fallbackTransactionDedupKey(result, "payment-a", 1_000_000L)
-        val repeated = PaymentRecognitionManager.fallbackTransactionDedupKey(result.copy(note = "  便利店  "), "payment-a", 1_100_000L)
+        val repeated = PaymentRecognitionManager.fallbackTransactionDedupKey(result.copy(note = "  便利店  "), "payment-a", 1_010_000L)
         val secondPayment = PaymentRecognitionManager.fallbackTransactionDedupKey(result, "payment-b", 1_100_000L)
         assertEquals(first, repeated)
         assertFalse(first == secondPayment)
@@ -158,5 +158,27 @@ class PaymentRecognitionTest {
         )
         assertEquals(first, refreshed)
         assertFalse(first == secondPayment)
+    }
+
+    @Test
+    fun `unidentified payment identity is platform scoped and uses a short callback window`() {
+        val alipay = PaymentFingerprint.captureIdentity(
+            PaymentPlatform.ALIPAY,
+            PaymentKind.MERCHANT_PAYMENT,
+            "支付宝 支付成功 ¥18.80"
+        )
+        val wechat = PaymentFingerprint.captureIdentity(
+            PaymentPlatform.WECHAT,
+            PaymentKind.MERCHANT_PAYMENT,
+            "微信支付 支付成功 ￥18.80"
+        )
+        assertEquals(PaymentFingerprint.UNIDENTIFIED_PAYMENT_WINDOW_MS, alipay.dedupWindowMs)
+        assertFalse(alipay.fingerprint == wechat.fingerprint)
+    }
+
+    @Test
+    fun `accepts WeChat success page without a completion button but rejects payment messages`() {
+        assertNotNull(PaymentCompletionClassifier.from("com.tencent.mm", "微信支付 支付成功 ￥12.00"))
+        assertNull(PaymentCompletionClassifier.from("com.tencent.mm", "支付消息 微信支付通知 支付成功 ￥12.00"))
     }
 }

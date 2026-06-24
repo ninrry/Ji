@@ -38,13 +38,14 @@ class PaymentRecognitionManager(
     private val notifier: AutoRecordNotifier = AutoRecordNotifier(context.applicationContext)
 ) {
     companion object {
-        private const val CANDIDATE_DEDUP_WINDOW_MS = 5 * 60_000L
+        private const val MIN_DEDUP_WINDOW_MS = 1_000L
+        private const val FALLBACK_TRANSACTION_DEDUP_WINDOW_MS = PaymentFingerprint.UNIDENTIFIED_PAYMENT_WINDOW_MS
 
         internal fun fallbackTransactionDedupKey(
             result: VlmTransactionResult,
             eventFingerprint: String,
             capturedAt: Long
-        ): String = "${result.platform.name}:${result.paymentKind.name}:$eventFingerprint:${capturedAt / CANDIDATE_DEDUP_WINDOW_MS}"
+        ): String = "${result.platform.name}:${result.paymentKind.name}:$eventFingerprint:${capturedAt / FALLBACK_TRANSACTION_DEDUP_WINDOW_MS}"
     }
 
     private val appContext = context.applicationContext
@@ -54,9 +55,10 @@ class PaymentRecognitionManager(
         .map { record -> record?.errorMessage }
 
     suspend fun enqueue(candidate: PaymentCandidate) = withContext(Dispatchers.IO) {
-        // The primary key makes duplicate accessibility callbacks in the same completion-page
-        // window a no-op even after the service process is recreated.
-        val id = "${candidate.eventFingerprint}-${candidate.capturedAt / CANDIDATE_DEDUP_WINDOW_MS}"
+        // Reserve the semantic identity in Room. This protects against callbacks with different
+        // node subsets and also survives an accessibility-service process restart.
+        val dedupWindowMs = candidate.dedupWindowMs.coerceAtLeast(MIN_DEDUP_WINDOW_MS)
+        val id = "${candidate.eventFingerprint}-${candidate.capturedAt}"
         val screenshotPath = candidate.screenshotBytes?.let { saveScreenshot(id, it) }
         val record = RecognitionRecordEntity(
             id = id,
@@ -67,7 +69,19 @@ class PaymentRecognitionManager(
             screenshotPath = screenshotPath,
             capturedAt = candidate.capturedAt
         )
-        if (recordDao.insert(record) == -1L) {
+        val inserted = database.withTransaction {
+            if (recordDao.hasRecordWithFingerprintBetween(
+                    fingerprint = candidate.eventFingerprint,
+                    fromCapturedAt = candidate.capturedAt - dedupWindowMs,
+                    toCapturedAt = candidate.capturedAt + dedupWindowMs
+                )
+            ) {
+                false
+            } else {
+                recordDao.insert(record) != -1L
+            }
+        }
+        if (!inserted) {
             deleteScreenshot(screenshotPath)
             return@withContext
         }

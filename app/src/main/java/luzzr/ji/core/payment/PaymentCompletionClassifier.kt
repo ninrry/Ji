@@ -15,6 +15,7 @@ object PaymentCompletionClassifier {
         "收支统计", "搜索账单", "交易记录", "历史账单"
     )
     private val wechatBillDetailMarkers = listOf("账单详情", "交易单号", "支付时间", "收款方")
+    private val wechatMessageMarkers = listOf("支付消息", "服务通知", "消息列表", "消息详情", "微信支付通知")
     private val alipayBillListMarkers = listOf(
         "支付宝账单", "全部账单", "账单列表", "账单筛选", "账单搜索",
         "收支分析", "月度账单", "交易记录", "历史账单", "花呗账单"
@@ -77,14 +78,15 @@ object PaymentCompletionClassifier {
         // A historic detail view normally contains several of these fields. A completion page may
         // link to details, but it does not present the complete historic-detail field set.
         if (wechatBillDetailMarkers.count(text::contains) >= 2) return false
-        // "付款成功" is the transient merchant-payment result. "支付成功" by itself is also
-        // shown in history pages, so only accept it with an immediate completion affordance.
-        return text.contains("付款成功") ||
-            (text.contains("支付成功") && (text.contains("完成") || text.contains("继续付款")))
+        // The actual WeChat result UI can expose only "支付成功". History and message views are
+        // blocked above, so do not require an additional button that may be absent from the node tree.
+        return text.contains("付款成功") || text.contains("支付成功")
     }
 
     private fun isWechatBillHistory(text: String): Boolean =
-        wechatBillListMarkers.any(text::contains) || wechatBillDetailMarkers.count(text::contains) >= 2
+        wechatBillListMarkers.any(text::contains) ||
+            wechatMessageMarkers.any(text::contains) ||
+            wechatBillDetailMarkers.count(text::contains) >= 2
 
     private fun isAlipayMerchantCompletion(text: String): Boolean =
         !isAlipayHistoricalPage(text) && (text.contains("付款成功") || text.contains("支付成功") || text.contains("交易成功"))

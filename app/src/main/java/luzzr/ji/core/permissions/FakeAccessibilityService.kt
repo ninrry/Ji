@@ -14,6 +14,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import luzzr.ji.JiApplication
 import luzzr.ji.core.payment.PaymentCandidate
+import luzzr.ji.core.payment.PaymentCaptureIdentity
 import luzzr.ji.core.payment.PaymentCompletionClassifier
 import luzzr.ji.core.payment.PaymentFingerprint
 import luzzr.ji.core.shizuku.ShizukuScreenshotGateway
@@ -23,7 +24,6 @@ import java.io.ByteArrayOutputStream
 class AutoBillAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "AutoBill"
-        private const val DEDUP_WINDOW_MS = 5 * 60_000L
         private const val MAX_DEDUP_ENTRIES = 64
         private const val MAX_NODE_COUNT = 300
     }
@@ -33,7 +33,9 @@ class AutoBillAccessibilityService : AccessibilityService() {
             Log.e(TAG, "Automatic payment recognition failed", error)
         }
     )
-    private val recentFingerprints = LinkedHashMap<String, Long>(MAX_DEDUP_ENTRIES, 0.75f, true)
+    private data class RecentFingerprint(val capturedAt: Long, val dedupWindowMs: Long)
+
+    private val recentFingerprints = LinkedHashMap<String, RecentFingerprint>(MAX_DEDUP_ENTRIES, 0.75f, true)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -56,24 +58,26 @@ class AutoBillAccessibilityService : AccessibilityService() {
             collectNodeTexts(root, texts, intArrayOf(0))
             val fullText = PaymentFingerprint.normalizedText(texts.joinToString("\n"))
             val signal = PaymentCompletionClassifier.from(packageName, fullText) ?: return
-            val fingerprint = PaymentFingerprint.create(signal.platform, signal.kind, fullText)
-            if (!shouldProcess(fingerprint)) return
-            captureAndQueue(signal.platform, signal.kind, fullText, fingerprint)
+            val identity = PaymentFingerprint.captureIdentity(signal.platform, signal.kind, fullText)
+            if (!shouldProcess(identity)) return
+            captureAndQueue(signal.platform, signal.kind, fullText, identity)
         } finally {
             @Suppress("DEPRECATION")
             root.recycle()
         }
     }
 
-    private fun shouldProcess(fingerprint: String): Boolean {
+    private fun shouldProcess(identity: PaymentCaptureIdentity): Boolean {
         val now = System.currentTimeMillis()
         synchronized(recentFingerprints) {
-            recentFingerprints.entries.removeAll { now - it.value > DEDUP_WINDOW_MS }
-            if (recentFingerprints.containsKey(fingerprint)) return false
+            recentFingerprints.entries.removeAll { (_, recent) ->
+                now - recent.capturedAt > recent.dedupWindowMs
+            }
+            if (recentFingerprints.containsKey(identity.fingerprint)) return false
             if (recentFingerprints.size >= MAX_DEDUP_ENTRIES) {
                 recentFingerprints.entries.firstOrNull()?.let { recentFingerprints.remove(it.key) }
             }
-            recentFingerprints[fingerprint] = now
+            recentFingerprints[identity.fingerprint] = RecentFingerprint(now, identity.dedupWindowMs)
             return true
         }
     }
@@ -82,7 +86,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
         platform: luzzr.ji.domain.model.PaymentPlatform,
         kind: luzzr.ji.domain.model.PaymentKind,
         screenText: String,
-        fingerprint: String
+        identity: PaymentCaptureIdentity
     ) {
         val capturedAt = System.currentTimeMillis()
         serviceScope.launch {
@@ -92,13 +96,13 @@ class AutoBillAccessibilityService : AccessibilityService() {
                 ?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
             if (shizukuBitmap != null) {
                 try {
-                    queue(platform, kind, screenText, compress(shizukuBitmap), capturedAt, fingerprint)
+                    queue(platform, kind, screenText, compress(shizukuBitmap), capturedAt, identity)
                 } finally {
                     shizukuBitmap.recycle()
                 }
                 return@launch
             }
-            captureAccessibilityAndQueue(platform, kind, screenText, capturedAt, fingerprint)
+            captureAccessibilityAndQueue(platform, kind, screenText, capturedAt, identity)
         }
     }
 
@@ -107,7 +111,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
         kind: luzzr.ji.domain.model.PaymentKind,
         screenText: String,
         capturedAt: Long,
-        fingerprint: String
+        identity: PaymentCaptureIdentity
     ) {
         try {
             takeScreenshot(
@@ -124,12 +128,12 @@ class AutoBillAccessibilityService : AccessibilityService() {
                         }
                         if (bitmap == null) {
                             buffer.close()
-                            queue(platform, kind, screenText, null, capturedAt, fingerprint)
+                            queue(platform, kind, screenText, null, capturedAt, identity)
                             return
                         }
                         serviceScope.launch {
                             try {
-                                queue(platform, kind, screenText, compress(bitmap), capturedAt, fingerprint)
+                                queue(platform, kind, screenText, compress(bitmap), capturedAt, identity)
                             } finally {
                                 bitmap.recycle()
                                 buffer.close()
@@ -139,13 +143,13 @@ class AutoBillAccessibilityService : AccessibilityService() {
 
                     override fun onFailure(errorCode: Int) {
                         Log.w(TAG, "Payment screenshot failed: $errorCode")
-                        queue(platform, kind, screenText, null, capturedAt, fingerprint)
+                        queue(platform, kind, screenText, null, capturedAt, identity)
                     }
                 }
             )
         } catch (error: Exception) {
             Log.w(TAG, "Payment screenshot request failed", error)
-            queue(platform, kind, screenText, null, capturedAt, fingerprint)
+            queue(platform, kind, screenText, null, capturedAt, identity)
         }
     }
 
@@ -155,12 +159,20 @@ class AutoBillAccessibilityService : AccessibilityService() {
         screenText: String,
         imageBytes: ByteArray?,
         capturedAt: Long,
-        fingerprint: String
+        identity: PaymentCaptureIdentity
     ) {
         serviceScope.launch {
             val app = applicationContext as JiApplication
             app.container.paymentRecognitionManager.enqueue(
-                PaymentCandidate(platform, kind, screenText, imageBytes, capturedAt, fingerprint)
+                PaymentCandidate(
+                    platform = platform,
+                    kindHint = kind,
+                    screenText = screenText,
+                    screenshotBytes = imageBytes,
+                    capturedAt = capturedAt,
+                    eventFingerprint = identity.fingerprint,
+                    dedupWindowMs = identity.dedupWindowMs
+                )
             )
         }
     }

@@ -1,6 +1,7 @@
 package luzzr.ji
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
@@ -14,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +50,7 @@ fun MainNavigation() {
 @Composable
 fun MainScreenFrame() {
     var currentTab by remember { mutableStateOf(ScreenTab.HOME) }
+    val tabHistory = remember { mutableStateListOf<ScreenTab>() }
     val context = LocalContext.current
     val app = context.applicationContext as JiApplication
     val homeViewModel: HomeViewModel = viewModel {
@@ -81,6 +84,20 @@ fun MainScreenFrame() {
     val homeState by homeViewModel.uiState.collectAsState()
     val extraState by extraBillViewModel.uiState.collectAsState()
 
+    BackHandler(
+        enabled = homeState.showAddDialog || homeState.showDeleteConfirmDialog != null ||
+            extraState.showAddDialog || extraState.showDeleteConfirmDialog != null ||
+            currentTab != ScreenTab.HOME
+    ) {
+        when {
+            homeState.showDeleteConfirmDialog != null -> homeViewModel.onEvent(luzzr.ji.feature.home.HomeUiEvent.ShowDeleteConfirm(null))
+            homeState.showAddDialog -> homeViewModel.onEvent(luzzr.ji.feature.home.HomeUiEvent.ToggleAddDialog)
+            extraState.showDeleteConfirmDialog != null -> extraBillViewModel.onEvent(luzzr.ji.feature.extrabill.ExtraBillUiEvent.ShowDeleteConfirm(null))
+            extraState.showAddDialog -> extraBillViewModel.onEvent(luzzr.ji.feature.extrabill.ExtraBillUiEvent.ToggleAddDialog)
+            else -> currentTab = tabHistory.removeLastOrNull() ?: ScreenTab.HOME
+        }
+    }
+
     LaunchedEffect(Unit) {
         homeViewModel.uiEffect.collect { effect ->
             when (effect) {
@@ -105,7 +122,15 @@ fun MainScreenFrame() {
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            FloatingNavigationBar(currentTab = currentTab, onTabSelected = { currentTab = it })
+            FloatingNavigationBar(
+                currentTab = currentTab,
+                onTabSelected = { nextTab ->
+                    if (nextTab != currentTab) {
+                        tabHistory.add(currentTab)
+                        currentTab = nextTab
+                    }
+                }
+            )
         }
     }
 }
