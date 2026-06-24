@@ -102,7 +102,7 @@ class PaymentRecognitionTest {
     }
 
     @Test
-    fun `fallback transaction key deduplicates same result inside a five minute window`() {
+    fun `fallback transaction key preserves distinct page fingerprints inside a five minute window`() {
         val result = VlmTransactionResult(
             amount = 1880,
             category = "购物",
@@ -110,11 +110,11 @@ class PaymentRecognitionTest {
             platform = PaymentPlatform.WECHAT,
             paymentKind = PaymentKind.MERCHANT_PAYMENT
         )
-        val first = PaymentRecognitionManager.fallbackTransactionDedupKey(result, 1_000_000L)
-        val repeated = PaymentRecognitionManager.fallbackTransactionDedupKey(result.copy(note = "  便利店  "), 1_100_000L)
-        val later = PaymentRecognitionManager.fallbackTransactionDedupKey(result, 1_200_000L)
+        val first = PaymentRecognitionManager.fallbackTransactionDedupKey(result, "payment-a", 1_000_000L)
+        val repeated = PaymentRecognitionManager.fallbackTransactionDedupKey(result.copy(note = "  便利店  "), "payment-a", 1_100_000L)
+        val secondPayment = PaymentRecognitionManager.fallbackTransactionDedupKey(result, "payment-b", 1_100_000L)
         assertEquals(first, repeated)
-        assertFalse(first == later)
+        assertFalse(first == secondPayment)
     }
 
     @Test
@@ -140,7 +140,7 @@ class PaymentRecognitionTest {
     }
 
     @Test
-    fun `fingerprint ignores volatile clocks dates and long payment identifiers`() {
+    fun `fingerprint ignores volatile clocks but retains payment identifiers`() {
         val first = PaymentFingerprint.create(
             PaymentPlatform.WECHAT,
             PaymentKind.MERCHANT_PAYMENT,
@@ -149,8 +149,14 @@ class PaymentRecognitionTest {
         val refreshed = PaymentFingerprint.create(
             PaymentPlatform.WECHAT,
             PaymentKind.MERCHANT_PAYMENT,
+            "微信支付 付款成功 ￥18.80 2026年6月24日 10:02 交易单号 2026062410012345"
+        )
+        val secondPayment = PaymentFingerprint.create(
+            PaymentPlatform.WECHAT,
+            PaymentKind.MERCHANT_PAYMENT,
             "微信支付 付款成功 ￥18.80 2026年6月24日 10:02 交易单号 2026062410019999"
         )
         assertEquals(first, refreshed)
+        assertFalse(first == secondPayment)
     }
 }

@@ -22,7 +22,6 @@ import luzzr.ji.core.vlm.VlmTransactionResult
 import luzzr.ji.domain.model.TransactionType
 import java.io.File
 import java.util.concurrent.TimeUnit
-import java.util.Locale
 
 sealed interface RecognitionProcessResult {
     data class Completed(val result: VlmTransactionResult) : RecognitionProcessResult
@@ -41,14 +40,11 @@ class PaymentRecognitionManager(
     companion object {
         private const val CANDIDATE_DEDUP_WINDOW_MS = 5 * 60_000L
 
-        internal fun fallbackTransactionDedupKey(result: VlmTransactionResult, capturedAt: Long): String {
-            val normalizedNote = result.note
-                .lowercase(Locale.ROOT)
-                .replace(Regex("\\s+"), " ")
-                .trim()
-                .take(100)
-            return "${result.platform.name}:${result.paymentKind.name}:${result.amount}:$normalizedNote:${capturedAt / CANDIDATE_DEDUP_WINDOW_MS}"
-        }
+        internal fun fallbackTransactionDedupKey(
+            result: VlmTransactionResult,
+            eventFingerprint: String,
+            capturedAt: Long
+        ): String = "${result.platform.name}:${result.paymentKind.name}:$eventFingerprint:${capturedAt / CANDIDATE_DEDUP_WINDOW_MS}"
     }
 
     private val appContext = context.applicationContext
@@ -123,7 +119,7 @@ class PaymentRecognitionManager(
 
     private suspend fun completeAtomically(record: RecognitionRecordEntity, result: VlmTransactionResult): Long {
         val dedupKey = result.tradeId?.let { "${result.platform.name}:$it" }
-            ?: fallbackTransactionDedupKey(result, record.capturedAt)
+            ?: fallbackTransactionDedupKey(result, record.eventFingerprint, record.capturedAt)
         return database.withTransaction {
             val transaction = TransactionEntity(
                 amount = result.amount,
