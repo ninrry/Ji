@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 账本/容器 (深灰碳黑 #2D2B2A，线宽 2dp) -->
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#2D2B2A"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M 39,46 h 30 a 8,8 0 0 1 8,8 v 20 a 8,8 0 0 1 -8,8 h -30 a 8,8 0 0 1 -8,-8 v -20 a 8,8 0 0 1 8,-8 z" />
+    
+    <!-- 投币缝 (深灰碳黑 #2D2B2A，线宽 2dp，圆角端点) -->
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#2D2B2A"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 40,40 L 68,40" />
+    
+    <!-- 硬币 (深灰碳黑 #2D2B2A，线宽 2dp) -->
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#2D2B2A"
+        android:fillColor="#00000000"
+        android:pathData="M 54,28 m -8,0 a 8,8 0 1,1 16,0 a 8,8 0 1,1 -16,0" />
+    
+    <!-- 数据趋势折线 (深灰碳黑 #2D2B2A，细线宽 1.5dp，圆角端点与圆角接缝) -->
+    <path
+        android:strokeWidth="1.5"
+        android:strokeColor="#2D2B2A"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M 39,72 L 49,62 L 59,68 L 69,56" />
+</vector>

@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Ji</string>
+    <string name="accessibility_description">Ji 记账助手的自动化记账提取服务。</string>
+    <string name="keep_alive_channel_name">自动记账保活</string>
+    <string name="keep_alive_channel_description">保持已启用的自动记账服务可用，并恢复待处理的识别任务。</string>
+    <string name="keep_alive_notification_title">Ji 自动记账服务运行中</string>
+    <string name="keep_alive_notification_text">正在等待微信、支付宝和京东的支付完成页</string>
+</resources>

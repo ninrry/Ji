@@ -1,0 +1,60 @@
+# Ji
+
+Ji 是一款面向 Android 12 及以上设备的个人自动记账工具。它在用户已完成支付后，识别微信、支付宝或京东的支付完成页，并调用已配置的云端 VLM 将账单写入本地。
+
+> Ji 只记录已完成的交易，不会发起支付、读取银行卡密码或替用户操作钱包。
+
+## 功能
+
+- 自动识别微信、支付宝、京东的商户支付完成页。
+- 支持微信/支付宝转账、微信红包和提现、花呗还款、京东白条还款等专用分类。
+- 以分为单位保存金额，自动账单保留平台、交易类型、交易号、发生时间和识别来源。
+- 使用单消费者任务队列、稳定页面指纹和持久化去重，避免无障碍高频事件造成重复记账或重复云端调用。
+- 支持 Shizuku/Sui 静默截图优先通道；不可用时自动回退到无障碍截图。
+- 前台保活、开机恢复与网络恢复重试；可在系统设置中授予忽略电池优化。
+
+## 使用要求
+
+- Android 12（API 31）或更高版本。
+- 已安装并可正常登录微信、支付宝或京东。
+- 在 Ji 的设置页配置云端 VLM API 密钥。
+- 手动开启 Ji 的无障碍服务。
+- 可选：启动 Shizuku 或 Sui，并在 Ji 中授予截图权限，以提高支付完成页截图稳定性。
+
+## 安装与设置
+
+1. 从 Releases 下载 `app-release.apk` 并安装。
+2. 打开 Ji，在“系统设置”中保存云端 VLM API 密钥。
+3. 打开“无障碍服务”。
+4. 建议开启“Shizuku 静默截图”和“忽略电池优化”。
+5. 完成支付后，Ji 会在后台识别并写入账单；请定期核对自动账单。
+
+## 隐私与安全
+
+- API 密钥存储在 Android 加密存储中，不提交到仓库。
+- 待识别截图只临时保存在应用私有目录；任务成功或最终失败后会清理。
+- 截图和页面文本会发送到用户配置的云端 VLM 服务用于识别。请仅在理解并接受该数据处理方式后启用自动识别。
+- 仓库不包含任何 keystore、签名密码、`local.properties`、构建产物或用户账单数据。
+
+## 本地构建
+
+需要 JDK 17、Android SDK 36 和 Android Build Tools。
+
+```powershell
+./gradlew.bat testDebugUnitTest lintDebug
+./gradlew.bat assembleRelease
+```
+
+如需生成签名 Release APK，请通过环境变量提供签名信息，避免将密钥或密码写入仓库：
+
+```powershell
+$env:JI_KEYSTORE_PATH = "C:\path\to\keystore.jks"
+$env:JI_STORE_PASSWORD = "<store-password>"
+$env:JI_KEY_ALIAS = "<key-alias>"
+$env:JI_KEY_PASSWORD = "<key-password>"
+./gradlew.bat assembleRelease
+```
+
+## 当前发布版本
+
+`v1.0.0`：Android 12+ 自动记账首个发布版，包含支付完成页识别、VLM 自动入账、Shizuku/Sui 截图、前台保活、重复识别抑制和新记一笔键盘适配。

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <!-- 纯色米黄背景底调 -->
+    <rect width="512" height="512" fill="#F4F1EA"/>
+    
+    <!-- 记账抽象元素组合 (硬币、投币缝、账本容器与数据折线，纯深灰碳黑线条) -->
+    <!-- 账本/容器 (描边 10px) -->
+    <rect x="147" y="218" width="218" height="171" rx="38" ry="38" fill="none" stroke="#2D2B2A" stroke-width="10"/>
+    
+    <!-- 投币缝 (描边 10px，圆角端点) -->
+    <path d="M 190,190 L 322,190" fill="none" stroke="#2D2B2A" stroke-width="10" stroke-linecap="round"/>
+    
+    <!-- 硬币 (描边 10px) -->
+    <circle cx="256" cy="133" r="38" fill="none" stroke="#2D2B2A" stroke-width="10"/>
+    
+    <!-- 数据趋势折线 (细描边 7px，圆角连接，代表统计) -->
+    <path d="M 185,341 L 232,294 L 280,323 L 327,266" fill="none" stroke="#2D2B2A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
