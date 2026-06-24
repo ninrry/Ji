@@ -23,6 +23,9 @@ interface RecognitionRecordDao {
     @Query("UPDATE recognition_records SET status = 'FAILED', errorMessage = :message WHERE id = :id")
     suspend fun markFailed(id: String, message: String)
 
+    @Query("UPDATE recognition_records SET status = 'IGNORED', errorMessage = NULL WHERE id = :id")
+    suspend fun markIgnored(id: String)
+
     @Query("UPDATE recognition_records SET status = 'COMPLETED', transactionId = :transactionId, errorMessage = NULL WHERE id = :id")
     suspend fun markCompleted(id: String, transactionId: Long)
 

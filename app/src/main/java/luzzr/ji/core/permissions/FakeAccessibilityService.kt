@@ -23,7 +23,7 @@ import java.io.ByteArrayOutputStream
 class AutoBillAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "AutoBill"
-        private const val DEDUP_WINDOW_MS = 30_000L
+        private const val DEDUP_WINDOW_MS = 5 * 60_000L
         private const val MAX_DEDUP_ENTRIES = 64
         private const val MAX_NODE_COUNT = 300
     }

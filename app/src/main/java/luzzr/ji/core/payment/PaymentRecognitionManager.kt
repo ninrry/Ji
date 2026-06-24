@@ -27,6 +27,7 @@ sealed interface RecognitionProcessResult {
     data class Completed(val result: VlmTransactionResult) : RecognitionProcessResult
     data class Failed(val message: String) : RecognitionProcessResult
     data class Retry(val message: String) : RecognitionProcessResult
+    data object Ignored : RecognitionProcessResult
 }
 
 class PaymentRecognitionManager(
@@ -37,7 +38,7 @@ class PaymentRecognitionManager(
     private val notifier: AutoRecordNotifier = AutoRecordNotifier(context.applicationContext)
 ) {
     companion object {
-        private const val CANDIDATE_DEDUP_WINDOW_MS = 30_000L
+        private const val CANDIDATE_DEDUP_WINDOW_MS = 5 * 60_000L
     }
 
     private val appContext = context.applicationContext
@@ -85,6 +86,9 @@ class PaymentRecognitionManager(
         try {
             val platform = luzzr.ji.domain.model.PaymentPlatform.valueOf(record.platform)
             val kind = luzzr.ji.domain.model.PaymentKind.valueOf(record.kindHint)
+            if (!PaymentCompletionClassifier.isStillEligible(platform, kind, record.screenText)) {
+                return@withContext ignore(record)
+            }
             val image = record.screenshotPath?.let { path -> File(path).takeIf(File::exists)?.readBytes() }
             val model = sharedPreferences.getString("opencode_model_id", "mimo-v2.5") ?: "mimo-v2.5"
             val result = VlmClient(apiKey, model).parsePayment(record.screenText, image, platform, kind)
@@ -136,6 +140,12 @@ class PaymentRecognitionManager(
         recordDao.markFailed(record.id, message)
         deleteScreenshot(record.screenshotPath)
         return RecognitionProcessResult.Failed(message)
+    }
+
+    private suspend fun ignore(record: RecognitionRecordEntity): RecognitionProcessResult.Ignored {
+        recordDao.markIgnored(record.id)
+        deleteScreenshot(record.screenshotPath)
+        return RecognitionProcessResult.Ignored
     }
 
     private fun saveScreenshot(id: String, bytes: ByteArray): String {

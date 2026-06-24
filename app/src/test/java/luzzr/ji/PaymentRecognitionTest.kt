@@ -38,6 +38,28 @@ class PaymentRecognitionTest {
     }
 
     @Test
+    fun `rejects wechat bill history and accepts an immediate merchant completion`() {
+        assertNull(
+            PaymentCompletionClassifier.from(
+                "com.tencent.mm",
+                "微信支付账单 全部账单 便利店 支付成功 ￥18.80"
+            )
+        )
+        assertNull(
+            PaymentCompletionClassifier.from(
+                "com.tencent.mm",
+                "账单详情 支付成功 交易单号 2026062410012345 支付时间 10:01 收款方 便利店"
+            )
+        )
+        assertNotNull(
+            PaymentCompletionClassifier.from(
+                "com.tencent.mm",
+                "微信支付 付款成功 ￥18.80 完成"
+            )
+        )
+    }
+
+    @Test
     fun `parses and validates strict cloud response`() {
         val client = VlmClient()
         val response = """{"status":"SUCCESS","amount":"18.80","category":"餐饮","kind":"MERCHANT_PAYMENT","platform":"WECHAT","note":"便利店","trade_id":"wx-1","completed_at":"2026-06-23T12:00:00Z","confidence":0.96}"""
