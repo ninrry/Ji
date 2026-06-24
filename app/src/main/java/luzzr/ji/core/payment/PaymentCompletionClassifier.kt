@@ -20,6 +20,10 @@ object PaymentCompletionClassifier {
         "收支分析", "月度账单", "交易记录", "历史账单", "花呗账单"
     )
     private val alipayBillDetailMarkers = listOf("账单详情", "交易号", "订单号", "创建时间", "付款时间", "支付时间", "服务商")
+    private val alipayMessageMarkers = listOf(
+        "支付消息", "消息中心", "消息通知", "通知消息", "消息详情",
+        "服务提醒", "消息盒子", "站内消息", "系统消息"
+    )
     private val jdBillListMarkers = listOf(
         "我的账单", "全部账单", "账单明细", "账单查询", "交易记录",
         "消费记录", "订单列表", "订单详情", "白条账单", "还款记录"
@@ -83,22 +87,24 @@ object PaymentCompletionClassifier {
         wechatBillListMarkers.any(text::contains) || wechatBillDetailMarkers.count(text::contains) >= 2
 
     private fun isAlipayMerchantCompletion(text: String): Boolean =
-        !isAlipayBillHistory(text) && (text.contains("付款成功") || text.contains("支付成功") || text.contains("交易成功"))
+        !isAlipayHistoricalPage(text) && (text.contains("付款成功") || text.contains("支付成功") || text.contains("交易成功"))
 
     private fun isJdMerchantCompletion(text: String): Boolean =
         !isJdBillHistory(text) && (text.contains("付款成功") || text.contains("支付成功") || text.contains("交易成功"))
 
     private fun isHistoricalBillPage(packageName: String, text: String): Boolean = when (packageName) {
         "com.tencent.mm" -> isWechatBillHistory(text)
-        "com.eg.android.AlipayGphone" -> isAlipayBillHistory(text)
+        "com.eg.android.AlipayGphone" -> isAlipayHistoricalPage(text)
         "com.jingdong.app.mall" -> isJdBillHistory(text)
         // Bank apps are intentionally not listed in accessibility_service_config. Unknown packages
         // are never treated as payment sources, which prevents bank-statement browsing from billing.
         else -> true
     }
 
-    private fun isAlipayBillHistory(text: String): Boolean =
-        alipayBillListMarkers.any(text::contains) || alipayBillDetailMarkers.count(text::contains) >= 2
+    private fun isAlipayHistoricalPage(text: String): Boolean =
+        alipayBillListMarkers.any(text::contains) ||
+            alipayBillDetailMarkers.count(text::contains) >= 2 ||
+            alipayMessageMarkers.any(text::contains)
 
     private fun isJdBillHistory(text: String): Boolean =
         jdBillListMarkers.any(text::contains) || jdBillDetailMarkers.count(text::contains) >= 2

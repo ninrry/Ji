@@ -71,6 +71,12 @@ class PaymentRecognitionTest {
         )
         assertNull(
             PaymentCompletionClassifier.from(
+                "com.eg.android.AlipayGphone",
+                "支付消息 消息详情 您有一笔交易成功 ￥22.00"
+            )
+        )
+        assertNull(
+            PaymentCompletionClassifier.from(
                 "com.jingdong.app.mall",
                 "白条账单 账单明细 交易成功 订单编号 123456789 付款时间 10:01"
             )
