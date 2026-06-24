@@ -2,7 +2,9 @@ package luzzr.ji
 
 import luzzr.ji.core.payment.PaymentCompletionClassifier
 import luzzr.ji.core.payment.PaymentFingerprint
+import luzzr.ji.core.payment.PaymentRecognitionManager
 import luzzr.ji.core.vlm.VlmClient
+import luzzr.ji.core.vlm.VlmTransactionResult
 import luzzr.ji.domain.model.PaymentKind
 import luzzr.ji.domain.model.PaymentPlatform
 import org.junit.Assert.assertEquals
@@ -57,6 +59,56 @@ class PaymentRecognitionTest {
                 "微信支付 付款成功 ￥18.80 完成"
             )
         )
+    }
+
+    @Test
+    fun `rejects Alipay JD and bank statement history pages`() {
+        assertNull(
+            PaymentCompletionClassifier.from(
+                "com.eg.android.AlipayGphone",
+                "支付宝账单 账单详情 交易成功 交易号 2026062410012345 付款时间 10:01"
+            )
+        )
+        assertNull(
+            PaymentCompletionClassifier.from(
+                "com.jingdong.app.mall",
+                "白条账单 账单明细 交易成功 订单编号 123456789 付款时间 10:01"
+            )
+        )
+        assertNull(
+            PaymentCompletionClassifier.from(
+                "com.icbc",
+                "交易明细 支付成功 ￥18.80"
+            )
+        )
+        assertNotNull(
+            PaymentCompletionClassifier.from(
+                "com.eg.android.AlipayGphone",
+                "支付宝 交易成功 ￥22.00"
+            )
+        )
+        assertNotNull(
+            PaymentCompletionClassifier.from(
+                "com.jingdong.app.mall",
+                "京东支付 付款成功 ￥36.00"
+            )
+        )
+    }
+
+    @Test
+    fun `fallback transaction key deduplicates same result inside a five minute window`() {
+        val result = VlmTransactionResult(
+            amount = 1880,
+            category = "购物",
+            note = "便利店",
+            platform = PaymentPlatform.WECHAT,
+            paymentKind = PaymentKind.MERCHANT_PAYMENT
+        )
+        val first = PaymentRecognitionManager.fallbackTransactionDedupKey(result, 1_000_000L)
+        val repeated = PaymentRecognitionManager.fallbackTransactionDedupKey(result.copy(note = "  便利店  "), 1_100_000L)
+        val later = PaymentRecognitionManager.fallbackTransactionDedupKey(result, 1_200_000L)
+        assertEquals(first, repeated)
+        assertFalse(first == later)
     }
 
     @Test

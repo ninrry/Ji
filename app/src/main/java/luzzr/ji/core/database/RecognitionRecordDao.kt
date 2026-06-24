@@ -47,6 +47,6 @@ interface RecognitionRecordDao {
     """)
     fun observeLatestActionableFailure(): Flow<RecognitionRecordEntity?>
 
-    @Query("DELETE FROM recognition_records WHERE status IN ('COMPLETED', 'FAILED') AND capturedAt < :before")
+    @Query("DELETE FROM recognition_records WHERE status IN ('COMPLETED', 'FAILED', 'IGNORED') AND capturedAt < :before")
     suspend fun deleteProcessedBefore(before: Long)
 }
