@@ -23,12 +23,12 @@ class PaymentRecognitionWorker(
         return processingMutex.withLock {
             when (val process = manager.process(recordId)) {
                 is RecognitionProcessResult.Completed,
-                is RecognitionProcessResult.Failed,
                 RecognitionProcessResult.Ignored -> Result.success()
+                is RecognitionProcessResult.Failed -> Result.failure()
                 is RecognitionProcessResult.Retry -> {
                     if (runAttemptCount + 1 >= MAX_ATTEMPTS) {
                         manager.failAfterRetries(recordId, process.message)
-                        Result.success()
+                        Result.failure()
                     } else {
                         Result.retry()
                     }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import luzzr.ji.core.common.MoneyAmountParser
 import luzzr.ji.domain.model.Transaction
 import luzzr.ji.domain.model.TransactionType
 import luzzr.ji.domain.usecase.CreateTransactionUseCase
@@ -121,8 +122,11 @@ class ExtraBillViewModel(
     }
 
     private fun saveTransaction() {
-        val amountDouble = _uiState.value.addAmount.toDoubleOrNull() ?: 0.0
-        val amount = Math.round(amountDouble * 100)
+        val amount = MoneyAmountParser.yuanToFenOrNull(_uiState.value.addAmount)
+        if (amount == null || amount <= 0L) {
+            _uiState.update { it.copy(errorMessage = "金额必须大于 0，且最多保留两位小数") }
+            return
+        }
         val category = _uiState.value.addCategory
         val note = _uiState.value.addNote
         val timestamp = _uiState.value.addTimestamp ?: System.currentTimeMillis()

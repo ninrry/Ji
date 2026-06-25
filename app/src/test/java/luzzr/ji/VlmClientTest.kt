@@ -23,7 +23,7 @@ class VlmClientTest {
         val result1 = client.parseScreen(wechatText)
         assertNotNull(result1)
         assertEquals(1550L, result1!!.amount)
-        assertEquals("罗森", result1.note)
+        assertEquals("罗森便利店", result1.note)
         assertEquals("餐饮", result1.category)
         assertTrue(result1.isFallback)
 
@@ -37,7 +37,7 @@ class VlmClientTest {
         val result2 = client.parseScreen(alipayText)
         assertNotNull(result2)
         assertEquals(3580L, result2!!.amount)
-        assertEquals("美团", result2.note)
+        assertEquals("美团外卖", result2.note)
         assertEquals("餐饮", result2.category)
         assertTrue(result2.isFallback)
 

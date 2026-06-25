@@ -31,14 +31,19 @@ class AutoRecordKeepAliveService : Service() {
         private const val NOTIFICATION_ID = 2001
         private const val CHECK_INTERVAL_MS = 60_000L
 
-        fun startIfAccessibilityEnabled(context: Context) {
-            if (!PermissionManager.isAccessibilityServiceEnabled(context)) return
-            val intent = Intent(context, AutoRecordKeepAliveService::class.java)
+        fun startIfAccessibilityEnabled(context: Context, scheduleWatchdog: Boolean = true) {
+            val appContext = context.applicationContext
+            if (!PermissionManager.isAccessibilityServiceEnabled(appContext)) {
+                AutoRecordAccessibilityWatchdog.stop(appContext)
+                return
+            }
+            if (scheduleWatchdog) AutoRecordAccessibilityWatchdog.start(appContext)
+            val intent = Intent(appContext, AutoRecordKeepAliveService::class.java)
             runCatching {
-                ContextCompat.startForegroundService(context, intent)
+                ContextCompat.startForegroundService(appContext, intent)
             }.onFailure { error ->
                 // Android can reject a background foreground-service launch in exceptional cases.
-                // The enabled accessibility service and WorkManager queue remain recoverable.
+                // The enabled accessibility service and watchdog queue remain recoverable.
                 Log.w(TAG, "Unable to start automatic bookkeeping foreground service", error)
             }
         }
@@ -48,6 +53,7 @@ class AutoRecordKeepAliveService : Service() {
     private val verifyAccessibilityEnabled = object : Runnable {
         override fun run() {
             if (!PermissionManager.isAccessibilityServiceEnabled(this@AutoRecordKeepAliveService)) {
+                AutoRecordAccessibilityWatchdog.stop(this@AutoRecordKeepAliveService)
                 stopSelf()
                 return
             }
@@ -64,10 +70,18 @@ class AutoRecordKeepAliveService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         showForegroundNotification()
+        AutoRecordAccessibilityWatchdog.start(this)
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (PermissionManager.isAccessibilityServiceEnabled(this)) {
+            AutoRecordAccessibilityWatchdog.start(this)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)

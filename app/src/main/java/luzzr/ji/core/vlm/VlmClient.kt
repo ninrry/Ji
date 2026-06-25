@@ -20,7 +20,6 @@ import java.math.RoundingMode
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
 
 data class VlmTransactionResult(
     val id: Long = 0,
@@ -37,19 +36,23 @@ data class VlmTransactionResult(
 
 class VlmClient(
     private val apiKey: String = "",
-    private val modelId: String = "mimo-v2.5"
+    private val modelId: String = "mimo-v2.5",
+    private val fallbackRuleEngine: LocalFallbackRuleEngine = LocalFallbackRuleEngine.default(),
+    private val apiUrl: String = DEFAULT_API_URL
 ) {
     companion object {
-        private const val API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
+        const val DEFAULT_API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
+        const val PREF_API_URL = "opencode_api_url"
         private const val MAX_AMOUNT_FEN = 9_999_999L
         private const val MAX_NOTE_LENGTH = 100
         private const val MIN_CONFIDENCE = 0.85
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val VALID_CATEGORIES = setOf("餐饮", "交通", "购物", "娱乐", "犒劳", "其它")
         private val HTTP_CLIENT = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
             .build()
         private val JSON_PARSER = Json { ignoreUnknownKeys = true }
     }
@@ -128,16 +131,24 @@ class VlmClient(
             if (jsonResponse) put("response_format", JSONObject().put("type", "json_object"))
         }
         val request = Request.Builder()
-            .url(API_URL)
+            .url(apiUrl)
             .header("Authorization", "Bearer $apiKey")
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
         HTTP_CLIENT.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) error("HTTP ${response.code}")
+            if (!response.isSuccessful) error(httpErrorMessage(response.code))
             return JSONObject(body).getJSONArray("choices")
                 .getJSONObject(0).getJSONObject("message").getString("content")
         }
+    }
+
+    private fun httpErrorMessage(code: Int): String = when (code) {
+        401, 403 -> "云端识别密钥无效或无权限"
+        408 -> "云端识别请求超时"
+        429 -> "云端识别请求过于频繁，请稍后再试"
+        in 500..599 -> "云端识别服务暂时不可用"
+        else -> "云端识别请求失败（HTTP $code）"
     }
 
     private fun paymentPrompt(text: String, platform: PaymentPlatform, kind: PaymentKind): String = """
@@ -215,25 +226,6 @@ class VlmClient(
     }.getOrNull()
 
     fun parseLocalFallback(screenText: String): VlmTransactionResult? {
-        val amountPattern = Pattern.compile("(?:¥|￥)\\s*([0-9]+(?:\\.[0-9]{1,2})?)|(?:支付|付款|收款|扣款|交易金额|共计|金额)\\s*(?:¥|￥)?\\s*([0-9]+(?:\\.[0-9]{1,2})?)|([0-9]+(?:\\.[0-9]{1,2})?)\\s*元")
-        val matcher = amountPattern.matcher(screenText)
-        if (!matcher.find()) return null
-        val amount = amountToFen(matcher.group(1) ?: matcher.group(2) ?: matcher.group(3)) ?: return null
-        val category = when {
-            listOf("麦当劳", "肯德基", "星巴克", "罗森", "全家", "美团", "外卖", "餐饮").any(screenText::contains) -> "餐饮"
-            listOf("滴滴", "地铁", "打车", "出行").any(screenText::contains) -> "交通"
-            listOf("淘宝", "京东", "拼多多", "购物").any(screenText::contains) -> "购物"
-            listOf("娱乐", "游戏", "电影").any(screenText::contains) -> "娱乐"
-            else -> "其它"
-        }
-        val note = listOf("罗森", "美团", "滴滴", "全家", "淘宝", "京东", "拼多多", "麦当劳", "肯德基", "星巴克")
-            .firstOrNull(screenText::contains) ?: "自动提取"
-        return VlmTransactionResult(
-            amount = amount,
-            category = category,
-            note = note,
-            confidence = 1.0,
-            isFallback = true
-        )
+        return fallbackRuleEngine.parse(screenText)
     }
 }

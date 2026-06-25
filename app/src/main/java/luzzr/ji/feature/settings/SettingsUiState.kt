@@ -14,6 +14,7 @@ data class SettingsUiState(
     val budgetInput: String = "",
     val isBudgetSaved: Boolean = false,
     val opencodeApiKey: String = "",
+    val opencodeApiUrl: String = "https://opencode.ai/zen/go/v1/chat/completions",
     val isApiKeySaved: Boolean = false,
     val opencodeModel: String = "mimo-v2.5",
     val isTestingConnection: Boolean = false,
@@ -28,6 +29,7 @@ sealed interface SettingsUiEvent {
     data class BudgetInputChanged(val value: String) : SettingsUiEvent
     data object SaveBudget : SettingsUiEvent
     data class ApiKeyChanged(val value: String) : SettingsUiEvent
+    data class ApiUrlChanged(val value: String) : SettingsUiEvent
     data class ModelChanged(val value: String) : SettingsUiEvent
     data object SaveApiKey : SettingsUiEvent
     data object RefreshPermissions : SettingsUiEvent

@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import luzzr.ji.core.design.JiTheme
-import luzzr.ji.core.permissions.AutoRecordKeepAliveService
+import luzzr.ji.core.permissions.AutoRecordAccessibilityWatchdog
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +41,6 @@ class MainActivity : ComponentActivity() {
   override fun onResume() {
     super.onResume()
     // The user may have enabled the accessibility service in system settings and returned here.
-    AutoRecordKeepAliveService.startIfAccessibilityEnabled(this)
+    AutoRecordAccessibilityWatchdog.keepAliveIfEnabled(this)
   }
 }

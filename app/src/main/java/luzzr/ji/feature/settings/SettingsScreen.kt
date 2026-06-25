@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -205,10 +206,28 @@ fun SettingsScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "配置您的 OpenCode Go 订阅 API 密钥并选择对应的模型以使用云端 VLM 多模态识别。若未配置，系统会自动启用本地 Fallback 记账。",
+                    text = "配置云端识别服务。自动识别时，支付完成页截图、页面文本、交易金额和交易号可能会发送到下方服务地址；请只使用你信任的 HTTPS 服务。",
                     fontSize = 12.sp,
                     color = JiTheme.colors.textSecondary,
                     lineHeight = 18.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = state.opencodeApiUrl,
+                    onValueChange = { onEvent(SettingsUiEvent.ApiUrlChanged(it)) },
+                    label = { Text("云端服务地址（HTTPS）") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = JiTheme.colors.stroke,
+                        unfocusedBorderColor = JiTheme.colors.divider,
+                        focusedLabelColor = JiTheme.colors.stroke,
+                        unfocusedLabelColor = JiTheme.colors.textSecondary,
+                        focusedTextColor = JiTheme.colors.textPrimary,
+                        unfocusedTextColor = JiTheme.colors.textPrimary
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -219,6 +238,8 @@ fun SettingsScreen(
                         value = state.opencodeApiKey,
                         onValueChange = { onEvent(SettingsUiEvent.ApiKeyChanged(it)) },
                         label = { Text("OpenCode API 密钥") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = JiTheme.colors.stroke,
                             unfocusedBorderColor = JiTheme.colors.divider,

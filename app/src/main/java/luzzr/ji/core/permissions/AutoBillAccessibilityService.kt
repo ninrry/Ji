@@ -10,7 +10,6 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import luzzr.ji.JiApplication
 import luzzr.ji.core.payment.PaymentCandidate
@@ -28,8 +27,9 @@ class AutoBillAccessibilityService : AccessibilityService() {
         private const val MAX_NODE_COUNT = 300
     }
 
+    private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+        serviceJob + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
             Log.e(TAG, "Automatic payment recognition failed", error)
         }
     )
@@ -93,7 +93,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
             // Shizuku/Sui capture is silent and includes content that ordinary accessibility
             // screenshots can miss. The same 720px/JPEG budget is retained for VLM cost control.
             val shizukuBitmap = ShizukuScreenshotGateway.capturePng(applicationContext)
-                ?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+                ?.let(::decodeSampledBitmap)
             if (shizukuBitmap != null) {
                 try {
                     queue(platform, kind, screenText, compress(shizukuBitmap), capturedAt, identity)
@@ -196,6 +196,31 @@ class AutoBillAccessibilityService : AccessibilityService() {
         return Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
     }
 
+    private fun decodeSampledBitmap(bytes: ByteArray): Bitmap? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0) return@runCatching null
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(width, height, 720)
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }.getOrElse { error ->
+        Log.w(TAG, "Cannot decode Shizuku payment screenshot safely", error)
+        null
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+        var sampleSize = 1
+        val longest = maxOf(width, height)
+        while (longest / (sampleSize * 2) >= maxDimension) {
+            sampleSize *= 2
+        }
+        return sampleSize
+    }
+
     private fun collectNodeTexts(node: AccessibilityNodeInfo?, target: MutableList<String>, count: IntArray) {
         if (node == null || count[0] >= MAX_NODE_COUNT) return
         count[0]++
@@ -215,7 +240,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        serviceScope.cancel()
+        serviceJob.cancel()
         super.onDestroy()
     }
 }

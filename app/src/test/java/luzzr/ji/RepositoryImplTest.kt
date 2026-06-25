@@ -44,6 +44,23 @@ class RepositoryImplTest {
         override fun observeAllTransactions(): Flow<List<TransactionEntity>> = flowOf(observedList)
         override suspend fun getTransactionById(id: Long): TransactionEntity? = queriedEntity
         override suspend fun getTransactionByDedupKey(dedupKey: String): TransactionEntity? = queriedEntity?.takeIf { it.dedupKey == dedupKey }
+        override suspend fun findAutoDuplicateWithoutTradeId(
+            platform: String,
+            paymentKind: String,
+            amount: Long,
+            noteKey: String,
+            fromOccurredAt: Long,
+            toOccurredAt: Long,
+            occurredAt: Long
+        ): TransactionEntity? = queriedEntity?.takeIf {
+            it.source == "AUTO_VLM" &&
+                it.tradeId == null &&
+                it.platform == platform &&
+                it.paymentKind == paymentKind &&
+                it.amount == amount &&
+                it.note.trim().replace(Regex("\\s+"), "") == noteKey &&
+                it.occurredAt in fromOccurredAt..toOccurredAt
+        }
         override suspend fun insertTransaction(transaction: TransactionEntity): Long {
             insertedEntity = transaction
             return 88L
