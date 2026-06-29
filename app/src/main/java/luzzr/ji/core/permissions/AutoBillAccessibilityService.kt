@@ -3,6 +3,7 @@ package luzzr.ji.core.permissions
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.graphics.scale
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -193,7 +194,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
         val longest = maxOf(bitmap.width, bitmap.height)
         if (longest <= maxDimension) return bitmap
         val scale = maxDimension.toFloat() / longest
-        return Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+        return bitmap.scale((bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
     }
 
     private fun decodeSampledBitmap(bytes: ByteArray): Bitmap? = runCatching {

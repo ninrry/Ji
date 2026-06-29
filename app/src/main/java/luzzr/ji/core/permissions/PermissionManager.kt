@@ -1,5 +1,6 @@
 package luzzr.ji.core.permissions
 
+import android.annotation.SuppressLint
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
@@ -7,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.net.toUri
 import android.text.TextUtils
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
@@ -69,11 +71,12 @@ object PermissionManager {
         context.getSystemService(PowerManager::class.java)
             .isIgnoringBatteryOptimizations(context.packageName)
 
+    @SuppressLint("BatteryLife")
     fun requestIgnoreBatteryOptimizations(context: Context) {
         if (isIgnoringBatteryOptimizations(context)) return
         context.startActivity(
             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                .setData(Uri.parse("package:${context.packageName}"))
+                .setData("package:${context.packageName}".toUri())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }

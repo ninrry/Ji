@@ -2,6 +2,7 @@ package luzzr.ji.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import luzzr.ji.core.common.MoneyAmountParser
@@ -53,7 +54,7 @@ class SettingsViewModel(
         val savedModel = "mimo-v2.5"
         val savedApiUrl = sharedPreferences.getString(VlmClient.PREF_API_URL, VlmClient.DEFAULT_API_URL)
             ?: VlmClient.DEFAULT_API_URL
-        sharedPreferences.edit().putString("opencode_model_id", savedModel).apply()
+        sharedPreferences.edit { putString("opencode_model_id", savedModel) }
         _uiState.update { it.copy(opencodeApiKey = savedApiKey, opencodeApiUrl = savedApiUrl, opencodeModel = savedModel) }
     }
 
@@ -158,10 +159,10 @@ class SettingsViewModel(
         }
         val model = "mimo-v2.5"
         secureStorage.saveApiKey(key)
-        sharedPreferences.edit()
-            .putString("opencode_model_id", model)
-            .putString(VlmClient.PREF_API_URL, apiUrl)
-            .apply()
+        sharedPreferences.edit {
+            putString("opencode_model_id", model)
+            putString(VlmClient.PREF_API_URL, apiUrl)
+        }
         _uiState.update { it.copy(isApiKeySaved = true, opencodeModel = model, opencodeApiUrl = apiUrl, errorMessage = null) }
         viewModelScope.launch {
             _uiEffect.emit(SettingsUiEffect.ShowToast("API 密钥与模型配置已保存"))

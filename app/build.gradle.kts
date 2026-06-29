@@ -104,7 +104,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
-  testImplementation("org.json:json:20240303")  // standalone org.json for unit tests (Android framework not mocked)
+  testImplementation(libs.org.json)  // standalone org.json for unit tests (Android framework not mocked)
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
@@ -128,4 +128,16 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.shizuku.api)
   implementation(libs.shizuku.provider)
+}
+
+// Single-source payment completion rules: sync from assets to test resources
+val syncPaymentRulesToTestResources by tasks.registering(Copy::class) {
+  description = "Copies payment_completion_rules.json from assets to test resources so tests share the same source."
+  from("src/main/assets/payment_completion_rules.json")
+  into("src/test/resources")
+  // Only copy if the source is newer
+  outputs.upToDateWhen { false }
+}
+tasks.matching { it.name == "preDebugUnitTestBuild" }.configureEach {
+  dependsOn(syncPaymentRulesToTestResources)
 }

@@ -2,6 +2,7 @@ package luzzr.ji.core.common
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -30,8 +31,8 @@ class SecureStorageImpl(context: Context) : SecureStorage {
     }
 
     override fun saveApiKey(key: String) {
-        sharedPrefs.edit()
-            .putString("opencode_api_key", key)
-            .apply()
+        sharedPrefs.edit {
+            putString("opencode_api_key", key)
+        }
     }
 }
