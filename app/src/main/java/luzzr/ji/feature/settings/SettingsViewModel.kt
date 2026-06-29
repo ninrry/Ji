@@ -1,6 +1,5 @@
 package luzzr.ji.feature.settings
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
@@ -58,7 +57,7 @@ class SettingsViewModel(
         _uiState.update { it.copy(opencodeApiKey = savedApiKey, opencodeApiUrl = savedApiUrl, opencodeModel = savedModel) }
     }
 
-    fun onEvent(event: SettingsUiEvent, context: Context) {
+    fun onEvent(event: SettingsUiEvent) {
         when (event) {
             is SettingsUiEvent.BudgetInputChanged -> {
                 _uiState.update { it.copy(budgetInput = event.value, isBudgetSaved = false) }
@@ -79,17 +78,15 @@ class SettingsViewModel(
                 saveApiKey()
             }
             SettingsUiEvent.RefreshPermissions -> {
-                refreshPermissions(context)
+                Unit
             }
             SettingsUiEvent.RequestShizukuPermission -> {
                 val requested = PermissionManager.requestShizukuScreenshotPermission()
-                refreshPermissions(context)
                 viewModelScope.launch {
                     _uiEffect.emit(SettingsUiEffect.ShowToast(if (requested) "已请求 Shizuku 截图授权" else "Shizuku/Sui 未运行或已拒绝授权"))
                 }
             }
             SettingsUiEvent.RequestIgnoreBatteryOptimization -> {
-                PermissionManager.requestIgnoreBatteryOptimizations(context)
                 viewModelScope.launch {
                     _uiEffect.emit(SettingsUiEffect.ShowToast("请在系统页面允许 Ji 忽略电池优化"))
                 }
@@ -112,7 +109,7 @@ class SettingsViewModel(
         }
     }
 
-    fun refreshPermissions(context: Context) {
+    fun refreshPermissions(context: android.content.Context) {
         val accessibilityEnabled = PermissionManager.isAccessibilityServiceEnabled(context)
         val shizukuStatus = PermissionManager.shizukuStatus()
         val shizukuAuthorized = shizukuStatus == luzzr.ji.core.shizuku.ShizukuScreenshotGateway.Status.AUTHORIZED
@@ -258,17 +255,17 @@ class SettingsViewModel(
         val model = _uiState.value.opencodeModel.trim()
         val apiUrl = normalizedApiUrlOrNull(_uiState.value.opencodeApiUrl)
         if (apiKey.isBlank()) {
-            val newHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageBytes) + ChatMessage("ai", "错误：未配置 API 密钥")
+            val newHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageLabel = "图片消息") + ChatMessage("ai", "错误：未配置 API 密钥")
             _uiState.update { it.copy(chatHistory = newHistory) }
             return
         }
         if (apiUrl == null) {
-            val newHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageBytes) + ChatMessage("ai", "错误：云端服务地址必须是 HTTPS 链接")
+            val newHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageLabel = "图片消息") + ChatMessage("ai", "错误：云端服务地址必须是 HTTPS 链接")
             _uiState.update { it.copy(chatHistory = newHistory) }
             return
         }
 
-        val updatedHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageBytes)
+        val updatedHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageLabel = "图片消息")
         _uiState.update {
             it.copy(
                 chatHistory = updatedHistory,

@@ -3,7 +3,7 @@ package luzzr.ji.feature.settings
 data class ChatMessage(
     val sender: String, // "user", "ai"
     val text: String,
-    val imageBytes: ByteArray? = null
+    val imageLabel: String? = null
 )
 
 data class SettingsUiState(
