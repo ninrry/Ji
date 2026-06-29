@@ -27,8 +27,8 @@ android {
         applicationId = "luzzr.ji"
         minSdk = 31
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -65,6 +65,10 @@ android {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
+    }
+
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 }
 
@@ -116,6 +120,7 @@ dependencies {
   implementation(libs.room.runtime)
   implementation(libs.room.ktx)
   ksp(libs.room.compiler)
+  androidTestImplementation(libs.room.testing)
 
   implementation(libs.okhttp)
   implementation(libs.androidx.work.runtime)
