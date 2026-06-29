@@ -56,7 +56,16 @@ $env:JI_KEY_PASSWORD = "<key-password>"
 ./gradlew.bat assembleRelease
 ```
 
+## 文档
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — 架构概览与包结构
+- [TESTING.md](TESTING.md) — 测试指南与 fixture 说明
+- [docs/payment-recognition.md](docs/payment-recognition.md) — 支付识别系统详解
+- [docs/adr/0001-payment-recognition-pipeline.md](docs/adr/0001-payment-recognition-pipeline.md) — 架构决策记录
+
 ## 当前发布版本
+
+`v1.1.0`：支付识别规则引擎重构——将硬编码关键词列表提取为 JSON 数据驱动的 `PaymentCompletionRuleEngine`，每次分类返回可追踪的 `PaymentRuleTrace`（ruleId、decision、matchedKeywords）。新增 23 个 fixture 测试覆盖微信/支付宝/京东全部 accept/reject 场景。Room schema v5、统计图表组件、Home/ExtraBill/Settings 模块重构拆分、新增 instrumented tests。
 
 `v1.0.7`：吸收安全审查反馈，支持配置 HTTPS 云端识别地址、API Key 脱敏输入、临时截图 AES-GCM 加密落盘、自动识别失败通知；金额转分改为 BigDecimal，修复通知 ID hash 碰撞和自动账单冲突时 transactionId=0 的风险。
 
