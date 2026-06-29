@@ -6,7 +6,12 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "recognition_records",
-    indices = [Index(value = ["status"]), Index(value = ["eventFingerprint"])]
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["eventFingerprint"]),
+        Index(value = ["eventFingerprint", "capturedAt"]),
+        Index(value = ["status", "capturedAt"])
+    ]
 )
 data class RecognitionRecordEntity(
     @PrimaryKey val id: String,

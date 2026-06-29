@@ -9,8 +9,7 @@ class MigrateTransactionUseCase(
     suspend operator fun invoke(transaction: Transaction, toExtra: Boolean): Result<Unit> {
         val migrated = transaction.copy(isExtra = toExtra)
         return runCatching {
-            transactionRepository.saveTransaction(migrated)
-            Unit
+            transactionRepository.updateTransaction(migrated)
         }
     }
 }

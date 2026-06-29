@@ -1,6 +1,6 @@
 package luzzr.ji
 
-import android.widget.Toast
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -11,8 +11,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -21,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -39,9 +38,16 @@ import luzzr.ji.feature.statistics.StatisticsViewModel
 @Composable
 fun MainNavigation() {
     val backStack = rememberNavBackStack(Main)
+    val context = LocalContext.current
     NavDisplay(
         backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
+        onBack = {
+            if (backStack.size > 1) {
+                backStack.removeLastOrNull()
+            } else {
+                (context as? Activity)?.finish()
+            }
+        },
         entryProvider = entryProvider { entry<Main> { MainScreenFrame() }
         }
     )
@@ -57,6 +63,7 @@ fun MainScreenFrame() {
         HomeViewModel(
             app.container.observeTransactionsUseCase,
             app.container.createTransactionUseCase,
+            app.container.updateTransactionUseCase,
             app.container.deleteTransactionUseCase,
             app.container.migrateTransactionUseCase,
             app.container.observeBudgetUseCase,
@@ -68,6 +75,7 @@ fun MainScreenFrame() {
         ExtraBillViewModel(
             app.container.observeTransactionsUseCase,
             app.container.createTransactionUseCase,
+            app.container.updateTransactionUseCase,
             app.container.deleteTransactionUseCase,
             app.container.migrateTransactionUseCase,
             app.container.getExtraBillOverviewUseCase
@@ -81,8 +89,8 @@ fun MainScreenFrame() {
             app.getSharedPreferences("app_config", android.content.Context.MODE_PRIVATE)
         )
     }
-    val homeState by homeViewModel.uiState.collectAsState()
-    val extraState by extraBillViewModel.uiState.collectAsState()
+    val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+    val extraState by extraBillViewModel.uiState.collectAsStateWithLifecycle()
 
     BackHandler(
         enabled = homeState.showAddDialog || homeState.showDeleteConfirmDialog != null ||
@@ -98,15 +106,6 @@ fun MainScreenFrame() {
         }
     }
 
-    LaunchedEffect(Unit) {
-        homeViewModel.uiEffect.collect { effect ->
-            when (effect) {
-                is luzzr.ji.feature.home.HomeUiEffect.ShowToast -> {
-                    Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
     Box(Modifier.fillMaxSize()) {
         Crossfade(currentTab, Modifier.fillMaxSize(), label = "tab_crossfade") { tab ->
             when (tab) {
