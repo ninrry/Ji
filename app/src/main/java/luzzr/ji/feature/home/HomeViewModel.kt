@@ -13,6 +13,7 @@ import luzzr.ji.domain.usecase.DeleteTransactionUseCase
 import luzzr.ji.domain.usecase.MigrateTransactionUseCase
 import luzzr.ji.domain.usecase.ObserveBudgetUseCase
 import luzzr.ji.domain.usecase.ObserveTransactionsUseCase
+import luzzr.ji.domain.usecase.UpdateTransactionUseCase
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -22,6 +23,7 @@ import java.util.Locale
 class HomeViewModel(
     private val observeTransactionsUseCase: ObserveTransactionsUseCase,
     private val createTransactionUseCase: CreateTransactionUseCase,
+    private val updateTransactionUseCase: UpdateTransactionUseCase,
     private val deleteTransactionUseCase: DeleteTransactionUseCase,
     private val migrateTransactionUseCase: MigrateTransactionUseCase,
     private val observeBudgetUseCase: ObserveBudgetUseCase,
@@ -186,7 +188,8 @@ class HomeViewModel(
         }
 
         viewModelScope.launch {
-            createTransactionUseCase(tx)
+            val result = if (editing != null) updateTransactionUseCase(tx).map { tx.id } else createTransactionUseCase(tx)
+            result
                 .onSuccess {
                     _uiState.update {
                         it.copy(
