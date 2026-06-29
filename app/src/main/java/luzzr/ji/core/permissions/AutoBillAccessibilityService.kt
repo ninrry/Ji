@@ -57,7 +57,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
             val texts = ArrayList<String>()
             collectNodeTexts(root, texts, intArrayOf(0))
             val fullText = PaymentFingerprint.normalizedText(texts.joinToString("\n"))
-            val signal = PaymentCompletionClassifier.from(packageName, fullText) ?: return
+            val signal = PaymentCompletionClassifier.from(this, packageName, fullText) ?: return
             val identity = PaymentFingerprint.captureIdentity(signal.platform, signal.kind, fullText)
             if (!shouldProcess(identity)) return
             captureAndQueue(signal.platform, signal.kind, fullText, identity)

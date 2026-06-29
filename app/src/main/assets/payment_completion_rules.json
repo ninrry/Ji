@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "common_reject": [
+    {
+      "id": "common.not_completed",
+      "description": "支付失败、取消、关闭或仍在处理中，不允许进入自动记账。",
+      "any": ["失败", "取消", "关闭", "处理中", "待支付", "支付中", "已撤销"]
+    },
+    {
+      "id": "common.refund",
+      "description": "退款页不是新的完成支付页。",
+      "any": ["退款成功", "退款到账", "退款金额", "退款通知", "退款原因", "退款时间", "已退款", "原路退回", "退回零钱", "退回余额"]
+    }
+  ],
+  "platforms": [
+    {
+      "id": "wechat",
+      "platform": "WECHAT",
+      "packages": ["com.tencent.mm"],
+      "reject": [
+        {
+          "id": "wechat.bill_list_or_message",
+          "description": "微信账单列表、统计、搜索、支付消息或服务通知不是即时完成页。",
+          "any": ["微信支付账单", "全部账单", "账单列表", "账单筛选", "账单统计", "收支统计", "搜索账单", "交易记录", "历史账单", "我的账单", "支付服务", "摇优惠", "支付消息", "服务通知", "消息列表", "消息详情", "微信支付通知", "微信支付凭证"]
+        },
+        {
+          "id": "wechat.bill_detail_field_cluster",
+          "description": "微信账单详情通常同时出现多项交易字段。",
+          "min_match": 3,
+          "any": ["账单详情", "当前状态", "交易单号", "商户单号", "支付时间", "付款时间", "支付方式", "付款方式", "商品", "商户全称", "收款方", "收单机构", "账单服务", "申请电子凭证", "发起群收款", "在此商户的交易", "对订单有疑惑"]
+        },
+        {
+          "id": "wechat.bill_detail_message_card",
+          "description": "账单详情中的零钱/银行卡支付凭证卡片不是新的支付完成事件。",
+          "all": ["账单详情"],
+          "any": ["支付消息", "服务通知", "消息列表", "消息详情", "微信支付通知", "微信支付凭证", "使用零钱支付", "使用零钱通支付", "使用银行卡支付"]
+        },
+        {
+          "id": "wechat.bill_detail_actions",
+          "description": "账单服务与电子凭证等操作区表示历史详情页。",
+          "any": ["账单服务", "申请电子凭证", "在此商户的交易", "对订单有疑惑"]
+        }
+      ],
+      "accept": [
+        {"id": "wechat.red_packet", "kind": "RED_PACKET", "any": ["红包已发出", "红包发送成功"]},
+        {"id": "wechat.transfer", "kind": "TRANSFER", "any": ["转账成功"]},
+        {"id": "wechat.withdrawal", "kind": "WITHDRAWAL", "any": ["提现成功", "提现申请已提交"]},
+        {"id": "wechat.merchant_payment", "kind": "MERCHANT_PAYMENT", "any": ["付款成功", "支付成功"]}
+      ]
+    },
+    {
+      "id": "alipay",
+      "platform": "ALIPAY",
+      "packages": ["com.eg.android.AlipayGphone"],
+      "reject": [
+        {
+          "id": "alipay.bill_list_or_message",
+          "description": "支付宝账单、消息中心和服务提醒不是即时支付完成页。",
+          "any": ["支付宝账单", "全部账单", "账单列表", "账单筛选", "账单搜索", "收支分析", "月度账单", "交易记录", "历史账单", "花呗账单", "账单管理", "账单分类", "账单服务", "支付消息", "消息中心", "消息通知", "通知消息", "消息详情", "服务提醒", "消息盒子", "站内消息", "系统消息", "服务消息", "本月支出", "统计支出", "大额消费", "先用后付", "分期付款"]
+        },
+        {
+          "id": "alipay.bill_detail_field_cluster",
+          "description": "支付宝账单详情通常同时出现多项交易字段。",
+          "min_match": 3,
+          "any": ["账单详情", "当前状态", "交易号", "交易单号", "订单号", "商户单号", "创建时间", "付款时间", "支付时间", "付款方式", "支付方式", "商品", "商品说明", "商户全称", "收款方全称", "收单机构", "服务商", "服务详情", "标签", "申请电子凭证", "在此商户的交易", "对订单有疑惑"]
+        },
+        {
+          "id": "alipay.bill_detail_actions",
+          "description": "账单详情、账单管理、电子凭证、服务详情等字段表示历史详情页。",
+          "any": ["账单详情", "账单服务", "账单管理", "账单分类", "收款方全称", "申请电子凭证", "在此商户的交易", "对订单有疑惑", "服务详情"]
+        },
+        {
+          "id": "alipay.payment_message_card",
+          "description": "成功词同时带查看详情/扣款管理与付款字段时是消息卡片。",
+          "all": ["查看详情", "付款方式"],
+          "any": ["付款成功", "支付成功", "交易成功", "自动扣款成功"]
+        },
+        {
+          "id": "alipay.auto_debit_message_card",
+          "description": "自动扣款管理消息不是即时支付完成页。",
+          "all": ["管理当前自动扣款服务", "扣款服务"],
+          "any": ["付款成功", "支付成功", "交易成功", "自动扣款成功"]
+        }
+      ],
+      "accept": [
+        {"id": "alipay.huabei_repayment", "kind": "HUABEI_REPAYMENT", "all": ["花呗"], "any": ["还款成功", "已还清"]},
+        {"id": "alipay.transfer", "kind": "TRANSFER", "any": ["转账成功"]},
+        {"id": "alipay.merchant_payment", "kind": "MERCHANT_PAYMENT", "any": ["付款成功", "支付成功", "交易成功", "自动扣款成功"]}
+      ]
+    },
+    {
+      "id": "jd",
+      "platform": "JD",
+      "packages": ["com.jingdong.app.mall"],
+      "reject": [
+        {
+          "id": "jd.bill_list",
+          "description": "京东账单、订单列表和还款记录不是即时完成页。",
+          "any": ["我的账单", "全部账单", "账单明细", "账单查询", "交易记录", "消费记录", "订单列表", "订单详情", "白条账单", "还款记录"]
+        },
+        {
+          "id": "jd.bill_detail_field_cluster",
+          "description": "京东账单详情字段聚合表示历史页。",
+          "min_match": 2,
+          "any": ["订单编号", "交易单号", "下单时间", "付款时间", "支付时间", "支付方式"]
+        }
+      ],
+      "accept": [
+        {"id": "jd.baitiao_repayment", "kind": "BAITIAO_REPAYMENT", "all": ["白条"], "any": ["还款成功", "白条还款成功"]},
+        {"id": "jd.merchant_payment", "kind": "MERCHANT_PAYMENT", "any": ["付款成功", "支付成功", "交易成功"]}
+      ]
+    }
+  ]
+}

@@ -19,3 +19,4 @@ signing.properties
 .externalNativeBuild
 .cxx
 local.properties
+.omo/

@@ -116,7 +116,7 @@ class PaymentRecognitionManager(
         try {
             val platform = luzzr.ji.domain.model.PaymentPlatform.valueOf(record.platform)
             val kind = luzzr.ji.domain.model.PaymentKind.valueOf(record.kindHint)
-            if (!PaymentCompletionClassifier.isStillEligible(platform, kind, record.screenText)) {
+            if (!PaymentCompletionClassifier.isStillEligible(appContext, platform, kind, record.screenText)) {
                 return@withContext ignore(record)
             }
             val image = record.screenshotPath?.let(screenshotStore::read)
