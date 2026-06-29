@@ -63,15 +63,21 @@ class ViewModelTests {
 
     private class FakeTxRepo(var list: List<Transaction>) : TransactionRepository {
         var savedTx: Transaction? = null
+        var updatedTx: Transaction? = null
         var deletedTx: Transaction? = null
+        var saveCount = 0
+        var updateCount = 0
 
         override fun observeAllTransactions(): Flow<List<Transaction>> = flowOf(list)
         override suspend fun getTransactionById(id: Long): Transaction? = null
         override suspend fun saveTransaction(transaction: Transaction): Long {
+            saveCount++
             savedTx = transaction
             return 77L
         }
         override suspend fun updateTransaction(transaction: Transaction) {
+            updateCount++
+            updatedTx = transaction
             savedTx = transaction
         }
         override suspend fun deleteTransaction(transaction: Transaction) {
@@ -113,6 +119,7 @@ class ViewModelTests {
         val homeViewModel = HomeViewModel(
             observeTransactionsUseCase = ObserveTransactionsUseCase(txRepo),
             createTransactionUseCase = CreateTransactionUseCase(txRepo),
+            updateTransactionUseCase = UpdateTransactionUseCase(txRepo),
             deleteTransactionUseCase = DeleteTransactionUseCase(txRepo),
             migrateTransactionUseCase = MigrateTransactionUseCase(txRepo),
             observeBudgetUseCase = ObserveBudgetUseCase(budgetRepo),
@@ -147,8 +154,11 @@ class ViewModelTests {
         assertEquals("120", homeViewModel.uiState.value.addAmount)
 
         homeViewModel.onEvent(HomeUiEvent.SaveTransaction)
-        assertNotNull(txRepo.savedTx)
-        assertEquals(12000L, txRepo.savedTx?.amount ?: 0L)
+        assertEquals(0, txRepo.saveCount)
+        assertEquals(1, txRepo.updateCount)
+        assertNotNull(txRepo.updatedTx)
+        assertEquals(sampleTxThisMonth.id, txRepo.updatedTx?.id)
+        assertEquals(12000L, txRepo.updatedTx?.amount ?: 0L)
 
         homeViewModel.onEvent(HomeUiEvent.ToggleAddDialog)
         homeViewModel.onEvent(HomeUiEvent.AmountChanged("invalid"))
@@ -164,7 +174,7 @@ class ViewModelTests {
         assertEquals(sampleTxThisMonth, txRepo.deletedTx)
 
         homeViewModel.onEvent(HomeUiEvent.MigrateToExtra(sampleTxThisMonth))
-        assertTrue(txRepo.savedTx?.isExtra ?: false)
+        assertTrue(txRepo.updatedTx?.isExtra ?: false)
     }
 
     @Test
@@ -204,6 +214,7 @@ class ViewModelTests {
         val extraViewModel = ExtraBillViewModel(
             observeTransactionsUseCase = ObserveTransactionsUseCase(txRepo),
             createTransactionUseCase = CreateTransactionUseCase(txRepo),
+            updateTransactionUseCase = UpdateTransactionUseCase(txRepo),
             deleteTransactionUseCase = DeleteTransactionUseCase(txRepo),
             migrateTransactionUseCase = MigrateTransactionUseCase(txRepo),
             getExtraBillOverviewUseCase = GetExtraBillOverviewUseCase(txRepo, budgetRepo, zoneId)
@@ -223,10 +234,16 @@ class ViewModelTests {
         assertNotNull(txRepo.savedTx)
         assertEquals(2000L, txRepo.savedTx?.amount ?: 0L)
         assertTrue(txRepo.savedTx?.isExtra ?: false)
+        assertEquals(1, txRepo.saveCount)
+        assertEquals(0, txRepo.updateCount)
 
         extraViewModel.onEvent(ExtraBillUiEvent.StartEdit(sampleExtraTx))
         assertTrue(extraViewModel.uiState.value.showAddDialog)
         assertEquals(sampleExtraTx, extraViewModel.uiState.value.editingTransaction)
+        extraViewModel.onEvent(ExtraBillUiEvent.SaveTransaction)
+        assertEquals(1, txRepo.saveCount)
+        assertEquals(1, txRepo.updateCount)
+        assertEquals(sampleExtraTx.id, txRepo.updatedTx?.id)
 
         extraViewModel.onEvent(ExtraBillUiEvent.ShowDeleteConfirm(sampleExtraTx))
         assertEquals(sampleExtraTx, extraViewModel.uiState.value.showDeleteConfirmDialog)
@@ -234,7 +251,7 @@ class ViewModelTests {
         assertEquals(sampleExtraTx, txRepo.deletedTx)
 
         extraViewModel.onEvent(ExtraBillUiEvent.MigrateToNormal(sampleExtraTx))
-        assertFalse(txRepo.savedTx?.isExtra ?: true)
+        assertFalse(txRepo.updatedTx?.isExtra ?: true)
 
         extraViewModel.onEvent(ExtraBillUiEvent.DeleteTransaction(sampleExtraTx))
         assertEquals(sampleExtraTx, txRepo.deletedTx)
@@ -266,25 +283,23 @@ class ViewModelTests {
         assertEquals("", settingsViewModel.uiState.value.opencodeApiKey)
         assertEquals("mimo-v2.5", settingsViewModel.uiState.value.opencodeModel)
 
-        val fakeContext = FakeContext()
-
         // 1. 测试预算额度修改保存
-        settingsViewModel.onEvent(SettingsUiEvent.BudgetInputChanged("4500"), fakeContext)
+        settingsViewModel.onEvent(SettingsUiEvent.BudgetInputChanged("4500"))
         assertEquals("4500", settingsViewModel.uiState.value.budgetInput)
 
-        settingsViewModel.onEvent(SettingsUiEvent.SaveBudget, fakeContext)
+        settingsViewModel.onEvent(SettingsUiEvent.SaveBudget)
         assertEquals(450000L, budgetRepo.savedBudget?.amount ?: 0L)
         assertTrue(settingsViewModel.uiState.value.isBudgetSaved)
 
         // 2. 测试 API Key 修改与模型选择修改
-        settingsViewModel.onEvent(SettingsUiEvent.ApiKeyChanged("opencode-go-api-key-test"), fakeContext)
-        settingsViewModel.onEvent(SettingsUiEvent.ModelChanged("mimo-v2.5"), fakeContext)
+        settingsViewModel.onEvent(SettingsUiEvent.ApiKeyChanged("opencode-go-api-key-test"))
+        settingsViewModel.onEvent(SettingsUiEvent.ModelChanged("mimo-v2.5"))
         assertEquals("opencode-go-api-key-test", settingsViewModel.uiState.value.opencodeApiKey)
         assertEquals("mimo-v2.5", settingsViewModel.uiState.value.opencodeModel)
         assertFalse(settingsViewModel.uiState.value.isApiKeySaved)
 
         // 3. 保存配置
-        settingsViewModel.onEvent(SettingsUiEvent.SaveApiKey, fakeContext)
+        settingsViewModel.onEvent(SettingsUiEvent.SaveApiKey)
         assertTrue(settingsViewModel.uiState.value.isApiKeySaved)
         assertEquals("opencode-go-api-key-test", fakeSecureStorage.getApiKey())
         assertEquals("mimo-v2.5", fakePrefs.getString("opencode_model_id", ""))
