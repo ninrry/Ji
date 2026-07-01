@@ -178,6 +178,24 @@ class ViewModelTests {
     }
 
     @Test
+    fun homeViewModelUsesPreviousBudgetWhenCurrentMonthMissing() = runTest {
+        val txRepo = FakeTxRepo(listOf(sampleTxThisMonth))
+        val budgetRepo = FakeBudgetRepo(listOf(Budget(currentYM.minusMonths(1).toString(), 300000L)))
+
+        val homeViewModel = HomeViewModel(
+            observeTransactionsUseCase = ObserveTransactionsUseCase(txRepo),
+            createTransactionUseCase = CreateTransactionUseCase(txRepo),
+            updateTransactionUseCase = UpdateTransactionUseCase(txRepo),
+            deleteTransactionUseCase = DeleteTransactionUseCase(txRepo),
+            migrateTransactionUseCase = MigrateTransactionUseCase(txRepo),
+            observeBudgetUseCase = ObserveBudgetUseCase(budgetRepo),
+            zoneId = zoneId
+        )
+
+        assertEquals(300000L, homeViewModel.uiState.value.monthlyBudget)
+    }
+
+    @Test
     fun testStatisticsViewModel() = runTest {
         val txRepo = FakeTxRepo(listOf(sampleTxThisMonth))
         val statisticsViewModel = StatisticsViewModel(
@@ -314,6 +332,20 @@ class ViewModelTests {
         )
         assertEquals("opencode-go-api-key-test", newSettingsViewModel.uiState.value.opencodeApiKey)
         assertEquals("mimo-v2.5", newSettingsViewModel.uiState.value.opencodeModel)
+    }
+
+    @Test
+    fun settingsViewModelUsesPreviousBudgetWhenCurrentMonthMissing() = runTest {
+        val budgetRepo = FakeBudgetRepo(listOf(Budget(currentYM.minusMonths(1).toString(), 300000L)))
+        val settingsViewModel = SettingsViewModel(
+            observeBudgetUseCase = ObserveBudgetUseCase(budgetRepo),
+            saveBudgetUseCase = SaveBudgetUseCase(budgetRepo),
+            secureStorage = FakeSecureStorage(),
+            sharedPreferences = FakeSharedPreferences(),
+            zoneId = zoneId
+        )
+
+        assertEquals("3000", settingsViewModel.uiState.value.budgetInput)
     }
 
     class FakeSharedPreferences : android.content.SharedPreferences {

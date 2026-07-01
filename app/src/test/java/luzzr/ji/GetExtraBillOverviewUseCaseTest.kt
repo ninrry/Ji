@@ -143,4 +143,49 @@ class GetExtraBillOverviewUseCaseTest {
         assertEquals(0L, overview.extraSpendAmount)
         assertEquals(0L, overview.remainingPoolAmount)
     }
+
+    @Test
+    fun testHistoricalOverviewUsesPreviousBudgetWhenExactMonthMissing() = runTest {
+        val currentMillis = LocalDate.of(2026, 7, 1)
+            .atStartOfDay(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val juneTransactions = (1..10).map { day ->
+            Transaction(
+                id = day.toLong(),
+                amount = 1000L,
+                type = TransactionType.EXPENSE,
+                category = "Food",
+                note = "day $day",
+                timestamp = LocalDate.of(2026, 6, day)
+                    .atStartOfDay(zoneId)
+                    .toInstant()
+                    .toEpochMilli(),
+                isExtra = false
+            )
+        }
+        val budgetsList = listOf(Budget("2026-05", 300000L))
+
+        val fakeTxRepo = object : TransactionRepository {
+            override fun observeAllTransactions(): Flow<List<Transaction>> = flowOf(juneTransactions)
+            override suspend fun getTransactionById(id: Long): Transaction? = null
+            override suspend fun saveTransaction(transaction: Transaction): Long = 0
+            override suspend fun updateTransaction(transaction: Transaction) {}
+            override suspend fun deleteTransaction(transaction: Transaction) {}
+        }
+        val fakeBudgetRepo = object : BudgetRepository {
+            override fun observeBudget(yearMonth: String): Flow<Budget?> = flowOf(null)
+            override fun observeAllBudgets(): Flow<List<Budget>> = flowOf(budgetsList)
+            override suspend fun getBudget(yearMonth: String): Budget? = null
+            override suspend fun getAllBudgets(): List<Budget> = budgetsList
+            override suspend fun saveBudget(budget: Budget) {}
+        }
+
+        val overview = GetExtraBillOverviewUseCase(fakeTxRepo, fakeBudgetRepo, zoneId)
+            .invoke(currentMillis)
+            .first()
+
+        assertEquals(290000L, overview.totalPoolAmount)
+        assertEquals(290000L, overview.remainingPoolAmount)
+    }
 }

@@ -54,15 +54,11 @@ class GetExtraBillOverviewUseCase(
         val earliestDate = normalExpenses.minOf { Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate() }
         val earliestYearMonth = YearMonth.from(earliestDate)
 
-        // 预算 Map
-        val budgetMap = budgets.associate { it.yearMonth to it.amount }
-
         var totalPool = 0L
 
         // 3. 循环计算从最早记账月份开始，到当前月份前一个月的合格历史月份
         var tempMonth = earliestYearMonth
         while (tempMonth.isBefore(currentYearMonth)) {
-            val ymString = tempMonth.toString() // "yyyy-MM"
             val monthTransactions = normalExpenses.filter {
                 val ym = YearMonth.from(Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate())
                 ym == tempMonth
@@ -75,7 +71,7 @@ class GetExtraBillOverviewUseCase(
 
             if (uniqueDays >= 10) {
                 // 消费满十日，计算结余
-                val monthlyBudget = budgetMap[ymString] ?: defaultMonthlyBudget
+                val monthlyBudget = budgets.effectiveBudgetFor(tempMonth)?.amount ?: defaultMonthlyBudget
                 val totalExpenseInMonth = monthTransactions.sumOf { it.amount }
                 val balance = monthlyBudget - totalExpenseInMonth
                 totalPool += balance

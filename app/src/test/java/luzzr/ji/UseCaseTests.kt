@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import luzzr.ji.domain.model.Budget
@@ -141,15 +142,20 @@ class UseCaseTests {
 
     @Test
     fun testObserveBudgetUseCase() = runTest {
+        val mayBudget = Budget("2026-05", 200000L)
+        val futureBudget = Budget("2026-08", 400000L)
         val repo = object : BudgetRepository {
-            override fun observeBudget(yearMonth: String): Flow<Budget?> = flowOf(sampleBudget)
-            override fun observeAllBudgets(): Flow<List<Budget>> = flowOf(emptyList())
+            override fun observeBudget(yearMonth: String): Flow<Budget?> = flowOf(null)
+            override fun observeAllBudgets(): Flow<List<Budget>> = flowOf(listOf(mayBudget, sampleBudget, futureBudget))
             override suspend fun getBudget(yearMonth: String): Budget? = null
             override suspend fun getAllBudgets(): List<Budget> = emptyList()
             override suspend fun saveBudget(budget: Budget) {}
         }
         val useCase = ObserveBudgetUseCase(repo)
+
         assertEquals(sampleBudget, useCase("2026-06").first())
+        assertEquals(sampleBudget, useCase("2026-07").first())
+        assertNull(useCase("2026-04").first())
     }
 
     @Test
