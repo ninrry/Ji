@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import luzzr.ji.core.design.JiTheme
+import luzzr.ji.core.vlm.VlmProvider
 
 @Composable
 fun VlmConfigSection(
@@ -36,7 +38,7 @@ fun VlmConfigSection(
     modifier: Modifier = Modifier
 ) {
     Text(
-        text = "OpenCode Go 智能订阅",
+        text = "云端识别服务",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         color = JiTheme.colors.textPrimary
@@ -52,12 +54,61 @@ fun VlmConfigSection(
             .testTag("settings_vlm_config_section")
     ) {
         Text(
-            text = "配置云端识别服务。自动识别时，支付完成页截图、页面文本、交易金额和交易号可能会发送到下方服务地址；请只使用你信任的 HTTPS 服务。",
+            text = "配置云端识别服务。自动识别时，支付完成页截图和文本会发送到下方服务地址；请只使用你信任的 HTTPS 服务。",
             fontSize = 12.sp,
             color = JiTheme.colors.textSecondary,
             lineHeight = 18.sp
         )
         Spacer(modifier = Modifier.height(12.dp))
+
+        // Provider selector
+        Text(
+            text = "服务供应商",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = JiTheme.colors.textPrimary
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            VlmProvider.entries.forEach { provider ->
+                val isSelected = state.vlmProvider == provider
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .border(
+                            1.dp,
+                            if (isSelected) JiTheme.colors.monetGreen else JiTheme.colors.stroke,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (isSelected) JiTheme.colors.monetGreen.copy(alpha = 0.15f)
+                            else JiTheme.colors.cardBackground
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onEvent(SettingsUiEvent.ProviderChanged(provider)) }
+                        .testTag("settings_provider_${provider.name.lowercase()}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = provider.displayName,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) JiTheme.colors.monetGreen else JiTheme.colors.textSecondary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // API URL
         OutlinedTextField(
             value = state.opencodeApiUrl,
             onValueChange = { onEvent(SettingsUiEvent.ApiUrlChanged(it)) },
@@ -69,6 +120,8 @@ fun VlmConfigSection(
             singleLine = true
         )
         Spacer(modifier = Modifier.height(12.dp))
+
+        // API Key
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -76,7 +129,7 @@ fun VlmConfigSection(
             OutlinedTextField(
                 value = state.opencodeApiKey,
                 onValueChange = { onEvent(SettingsUiEvent.ApiKeyChanged(it)) },
-                label = { Text("OpenCode API 密钥") },
+                label = { Text("API 密钥") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 colors = settingsTextFieldColors(),
@@ -104,8 +157,10 @@ fun VlmConfigSection(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Model display
         Text(
-            text = "已选 VLM 智能模型",
+            text = "已选模型",
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             color = JiTheme.colors.textPrimary
@@ -119,10 +174,20 @@ fun VlmConfigSection(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
-                text = "MiMo V2.5 (仅支持此唯一图像多模态模型)",
+                text = "${state.opencodeModel} via ${state.vlmProvider.displayName}",
                 fontSize = 12.sp,
                 color = JiTheme.colors.textPrimary,
                 fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Cost hint for Xiaomi pay-as-you-go
+        if (state.vlmProvider == VlmProvider.XIAOMI) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "按量计费: mimo-v2.5 输入 1/MTok, 输出 2/MTok",
+                fontSize = 11.sp,
+                color = JiTheme.colors.textSecondary
             )
         }
 

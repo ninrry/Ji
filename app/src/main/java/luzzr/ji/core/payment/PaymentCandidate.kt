@@ -25,7 +25,7 @@ data class PaymentCaptureIdentity(
 )
 
 object PaymentFingerprint {
-    const val MAX_TEXT_LENGTH = 6_000
+    const val MAX_TEXT_LENGTH = 3_000
     const val IDENTIFIED_PAYMENT_WINDOW_MS = 5 * 60_000L
     const val UNIDENTIFIED_PAYMENT_WINDOW_MS = 20_000L
 

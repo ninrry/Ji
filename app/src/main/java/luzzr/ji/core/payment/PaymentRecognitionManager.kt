@@ -18,7 +18,10 @@ import luzzr.ji.core.database.AppDatabase
 import luzzr.ji.core.database.RecognitionRecordEntity
 import luzzr.ji.core.database.TransactionEntity
 import luzzr.ji.core.vlm.LocalFallbackRuleEngine
+import luzzr.ji.core.vlm.VlmApiException
 import luzzr.ji.core.vlm.VlmClient
+import luzzr.ji.core.vlm.VlmErrorCategory
+import luzzr.ji.core.vlm.VlmProvider
 import luzzr.ji.core.vlm.VlmTransactionResult
 import luzzr.ji.domain.model.TransactionType
 import java.io.File
@@ -41,6 +44,8 @@ class PaymentRecognitionManager(
     companion object {
         private const val MIN_DEDUP_WINDOW_MS = 1_000L
         private const val FALLBACK_TRANSACTION_DEDUP_WINDOW_MS = 15 * 60_000L
+        /** In-memory dedup cache to skip duplicate enqueues before hitting Room. */
+        private const val MEMORY_DEDUP_CAPACITY = 128
 
         internal fun fallbackTransactionDedupKey(
             result: VlmTransactionResult,
@@ -60,14 +65,28 @@ class PaymentRecognitionManager(
     private val appContext = context.applicationContext
     private val recordDao = database.recognitionRecordDao()
     private val screenshotStore = EncryptedScreenshotStore(File(appContext.filesDir, "recognition"))
+    /** Fast in-memory dedup: fingerprint -> capturedAt, evicts oldest when full. */
+    private val memoryDedupCache = LinkedHashMap<String, Long>(MEMORY_DEDUP_CAPACITY, 0.75f, true)
 
     fun observeLatestFailure(): Flow<String?> = recordDao.observeLatestActionableFailure()
         .map { record -> record?.errorMessage }
 
     suspend fun enqueue(candidate: PaymentCandidate) = withContext(Dispatchers.IO) {
+        // Fast in-memory dedup check before any I/O
+        val dedupWindowMs = candidate.dedupWindowMs.coerceAtLeast(MIN_DEDUP_WINDOW_MS)
+        synchronized(memoryDedupCache) {
+            val lastSeen = memoryDedupCache[candidate.eventFingerprint]
+            if (lastSeen != null && candidate.capturedAt - lastSeen < dedupWindowMs) {
+                return@withContext  // Already processing or recently processed
+            }
+            if (memoryDedupCache.size >= MEMORY_DEDUP_CAPACITY) {
+                memoryDedupCache.entries.firstOrNull()?.let { memoryDedupCache.remove(it.key) }
+            }
+            memoryDedupCache[candidate.eventFingerprint] = candidate.capturedAt
+        }
+
         // Reserve the semantic identity in Room. This protects against callbacks with different
         // node subsets and also survives an accessibility-service process restart.
-        val dedupWindowMs = candidate.dedupWindowMs.coerceAtLeast(MIN_DEDUP_WINDOW_MS)
         val id = "${candidate.eventFingerprint}-${candidate.capturedAt}"
         val screenshotPath = candidate.screenshotBytes?.let { saveScreenshot(id, it) }
         val record = RecognitionRecordEntity(
@@ -110,8 +129,11 @@ class PaymentRecognitionManager(
     suspend fun process(recordId: String): RecognitionProcessResult = withContext(Dispatchers.IO) {
         if (recordDao.claim(recordId) == 0) return@withContext RecognitionProcessResult.Ignored
         val record = recordDao.getById(recordId) ?: return@withContext RecognitionProcessResult.Failed("识别任务不存在")
-        val apiKey = secureStorage.getApiKey()
-        if (apiKey.isBlank()) return@withContext fail(record, "请先在设置中保存云端识别密钥")
+        val providerName = sharedPreferences.getString(VlmClient.PREF_PROVIDER, VlmProvider.XIAOMI.name)
+            ?: VlmProvider.XIAOMI.name
+        val provider = runCatching { VlmProvider.valueOf(providerName) }.getOrDefault(VlmProvider.XIAOMI)
+        val apiKey = secureStorage.getApiKey(provider)
+        if (apiKey.isBlank()) return@withContext fail(record, "请先在设置中保存${provider.displayName}密钥")
 
         try {
             val platform = luzzr.ji.domain.model.PaymentPlatform.valueOf(record.platform)
@@ -120,14 +142,13 @@ class PaymentRecognitionManager(
                 return@withContext ignore(record)
             }
             val image = record.screenshotPath?.let(screenshotStore::read)
-            val model = sharedPreferences.getString("opencode_model_id", "mimo-v2.5") ?: "mimo-v2.5"
-            val apiUrl = sharedPreferences.getString(VlmClient.PREF_API_URL, VlmClient.DEFAULT_API_URL)
-                ?: VlmClient.DEFAULT_API_URL
+            val (apiUrl, model) = VlmClient.resolveEndpoint(provider, sharedPreferences)
             val result = VlmClient(
                 apiKey = apiKey,
                 modelId = model,
                 fallbackRuleEngine = LocalFallbackRuleEngine.from(appContext, sharedPreferences),
-                apiUrl = apiUrl
+                apiUrl = apiUrl,
+                provider = provider
             ).parsePayment(record.screenText, image, platform, kind)
                 ?: return@withContext fail(record, "未识别到可自动入账的支付完成页")
             val transactionId = completeAtomically(record, result)
@@ -135,6 +156,31 @@ class PaymentRecognitionManager(
             recordDao.deleteProcessedBefore(System.currentTimeMillis() - 14 * 24 * 60 * 60 * 1000L)
             notifier.showRecorded(result)
             RecognitionProcessResult.Completed(result.copy(completedAt = result.completedAt ?: record.capturedAt))
+        } catch (apiEx: VlmApiException) {
+            when {
+                apiEx.category == VlmErrorCategory.BALANCE_INSUFFICIENT -> {
+                    // 402 — hard stop, no retry, alert user to recharge
+                    val msg = apiEx.message ?: "账户余额不足"
+                    recordDao.markFailed(record.id, msg)
+                    deleteScreenshot(record.screenshotPath)
+                    notifier.showBalanceInsufficient()
+                    RecognitionProcessResult.Failed(msg)
+                }
+                apiEx.category.isRetryable -> {
+                    // 429/5xx/network — allow retry
+                    val msg = apiEx.message ?: "云端识别暂时不可用"
+                    recordDao.markRetry(record.id, msg)
+                    RecognitionProcessResult.Retry(msg)
+                }
+                else -> {
+                    // 400/401/403/404/421 — permanent error, no retry
+                    val msg = apiEx.message ?: "云端识别配置错误"
+                    recordDao.markFailed(record.id, msg)
+                    deleteScreenshot(record.screenshotPath)
+                    notifier.showApiError(apiEx.category, msg)
+                    RecognitionProcessResult.Failed(msg)
+                }
+            }
         } catch (error: Exception) {
             recordDao.markRetry(record.id, error.message ?: "云端识别网络异常")
             RecognitionProcessResult.Retry(error.message ?: "云端识别网络异常")

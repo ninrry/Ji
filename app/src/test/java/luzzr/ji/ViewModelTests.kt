@@ -277,9 +277,16 @@ class ViewModelTests {
 
     class FakeSecureStorage : luzzr.ji.core.common.SecureStorage {
         var apiKeyVal = ""
+        private val providerKeys = mutableMapOf<String, String>()
         override fun getApiKey(): String = apiKeyVal
         override fun saveApiKey(key: String) {
             apiKeyVal = key
+        }
+        override fun getApiKey(provider: luzzr.ji.core.vlm.VlmProvider): String =
+            providerKeys[provider.apiKeyPrefKey] ?: ""
+        override fun saveApiKey(provider: luzzr.ji.core.vlm.VlmProvider, key: String) {
+            providerKeys[provider.apiKeyPrefKey] = key
+            apiKeyVal = key // keep legacy in sync
         }
     }
 

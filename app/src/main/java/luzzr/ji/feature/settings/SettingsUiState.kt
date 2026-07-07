@@ -1,5 +1,7 @@
 package luzzr.ji.feature.settings
 
+import luzzr.ji.core.vlm.VlmProvider
+
 data class ChatMessage(
     val sender: String, // "user", "ai"
     val text: String,
@@ -13,10 +15,11 @@ data class SettingsUiState(
     val isBatteryOptimizationIgnored: Boolean = false,
     val budgetInput: String = "",
     val isBudgetSaved: Boolean = false,
+    val vlmProvider: VlmProvider = VlmProvider.XIAOMI,
     val opencodeApiKey: String = "",
-    val opencodeApiUrl: String = "https://opencode.ai/zen/go/v1/chat/completions",
+    val opencodeApiUrl: String = VlmProvider.XIAOMI.defaultApiUrl,
     val isApiKeySaved: Boolean = false,
-    val opencodeModel: String = "mimo-v2.5",
+    val opencodeModel: String = VlmProvider.XIAOMI.defaultModel,
     val isTestingConnection: Boolean = false,
     val connectionTestResult: String? = null,
     val chatInput: String = "",
@@ -28,6 +31,7 @@ data class SettingsUiState(
 sealed interface SettingsUiEvent {
     data class BudgetInputChanged(val value: String) : SettingsUiEvent
     data object SaveBudget : SettingsUiEvent
+    data class ProviderChanged(val provider: VlmProvider) : SettingsUiEvent
     data class ApiKeyChanged(val value: String) : SettingsUiEvent
     data class ApiUrlChanged(val value: String) : SettingsUiEvent
     data class ModelChanged(val value: String) : SettingsUiEvent

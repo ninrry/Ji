@@ -20,3 +20,4 @@ signing.properties
 .cxx
 local.properties
 .omo/
+app-release-signed.apk.idsig

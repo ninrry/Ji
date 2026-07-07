@@ -21,6 +21,44 @@ import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
+// ── Structured API error ──────────────────────────────────────────────────────
+
+/** Error categories that map to distinct user-facing behaviors. */
+enum class VlmErrorCategory {
+    /** Bad request / format / model name — developer error, not retryable. */
+    BAD_REQUEST,
+    /** 401 — wrong key or mixed Token-Plan/paygo keys. */
+    AUTH_FAILED,
+    /** 402 — account balance insufficient. Must alert user to recharge. */
+    BALANCE_INSUFFICIENT,
+    /** 403 — region block or key flagged by risk-control. */
+    ACCESS_DENIED,
+    /** 404 — model or endpoint doesn't support the requested feature. */
+    NOT_FOUND,
+    /** 421 — content moderation block. */
+    CONTENT_BLOCKED,
+    /** 429 — rate-limited. Retryable with backoff. */
+    RATE_LIMITED,
+    /** 5xx — server-side issue. Retryable. */
+    SERVER_ERROR,
+    /** Timeout / network. Retryable. */
+    NETWORK_ERROR,
+    /** Anything else. */
+    UNKNOWN;
+
+    val isRetryable: Boolean
+        get() = this in setOf(RATE_LIMITED, SERVER_ERROR, NETWORK_ERROR)
+}
+
+class VlmApiException(
+    val category: VlmErrorCategory,
+    val httpStatus: Int,
+    val rawBody: String,
+    message: String
+) : Exception(message)
+
+// ── Result model ─────────────────────────────────────────────────────────────
+
 data class VlmTransactionResult(
     val id: Long = 0,
     val amount: Long,
@@ -34,15 +72,40 @@ data class VlmTransactionResult(
     val isFallback: Boolean = false
 )
 
+// ── Provider enum ─────────────────────────────────────────────────────────────
+
+enum class VlmProvider(
+    val displayName: String,
+    val defaultApiUrl: String,
+    val defaultModel: String,
+    val apiKeyPrefKey: String
+) {
+    XIAOMI(
+        displayName = "小米 MiMo",
+        defaultApiUrl = "https://api.xiaomimimo.com/v1/chat/completions",
+        defaultModel = "mimo-v2.5",
+        apiKeyPrefKey = "xiaomi_api_key"
+    ),
+    OPENCODE(
+        displayName = "OpenCode Go",
+        defaultApiUrl = "https://opencode.ai/zen/go/v1/chat/completions",
+        defaultModel = "mimo-v2.5",
+        apiKeyPrefKey = "opencode_api_key"
+    )
+}
+
+// ── Client ───────────────────────────────────────────────────────────────────
+
 class VlmClient(
     private val apiKey: String = "",
     private val modelId: String = "mimo-v2.5",
     private val fallbackRuleEngine: LocalFallbackRuleEngine = LocalFallbackRuleEngine.default(),
-    private val apiUrl: String = DEFAULT_API_URL
+    private val apiUrl: String = VlmProvider.XIAOMI.defaultApiUrl,
+    private val provider: VlmProvider = VlmProvider.XIAOMI
 ) {
     companion object {
-        const val DEFAULT_API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
         const val PREF_API_URL = "opencode_api_url"
+        const val PREF_PROVIDER = "vlm_provider"
         private const val MAX_AMOUNT_FEN = 9_999_999L
         private const val MAX_NOTE_LENGTH = 100
         private const val MIN_CONFIDENCE = 0.85
@@ -55,7 +118,17 @@ class VlmClient(
             .callTimeout(10, TimeUnit.SECONDS)
             .build()
         private val JSON_PARSER = Json { ignoreUnknownKeys = true }
+
+        fun resolveEndpoint(provider: VlmProvider, prefs: android.content.SharedPreferences): Pair<String, String> {
+            val savedUrl = prefs.getString(PREF_API_URL, null)
+            val savedModel = prefs.getString("opencode_model_id", null)
+            val url = savedUrl?.takeIf { it.isNotBlank() } ?: provider.defaultApiUrl
+            val model = savedModel?.takeIf { it.isNotBlank() } ?: provider.defaultModel
+            return url to model
+        }
     }
+
+    // ── Public API ───────────────────────────────────────────────────────
 
     suspend fun parsePayment(
         screenText: String,
@@ -80,7 +153,6 @@ class VlmClient(
         parsePaymentResponse(executeChat(messages, jsonResponse = true), expectedPlatform, expectedKind)
     }
 
-    /** Kept for connection diagnostics and legacy unit coverage; automatic billing always uses parsePayment. */
     suspend fun parseScreen(screenText: String): VlmTransactionResult? = withContext(Dispatchers.IO) {
         if (apiKey.isNotBlank()) {
             val result = runCatching {
@@ -122,49 +194,113 @@ class VlmClient(
         executeChat(messages, jsonResponse = false)
     }
 
+    /** Check account balance for Xiaomi pay-as-you-go (call on settings page). */
+    suspend fun checkBalance(): String = withContext(Dispatchers.IO) {
+        if (provider != VlmProvider.XIAOMI)
+            return@withContext "余额查询仅支持小米直连供应商"
+        val request = Request.Builder()
+            .url("https://api.xiaomimimo.com/v1/dashboard/billing/credit_grants")
+            .header("Authorization", "Bearer $apiKey")
+            .header("api-key", apiKey)
+            .get()
+            .build()
+        try {
+            HTTP_CLIENT.newCall(request).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val cat = categorizeHttpError(resp.code)
+                    throw VlmApiException(cat, resp.code, body, describeCategory(cat, resp.code))
+                }
+                body
+            }
+        } catch (e: VlmApiException) { throw e }
+          catch (e: Exception) { throw VlmApiException(VlmErrorCategory.NETWORK_ERROR, 0, "", e.message ?: "网络异常") }
+    }
+
+    // ── Internal ──────────────────────────────────────────────────────────
+
     private fun executeChat(messages: JSONArray, jsonResponse: Boolean): String {
         val payload = JSONObject().apply {
             put("model", modelId)
             put("messages", messages)
             put("temperature", 0)
-            put("max_tokens", 256)
+            put("max_tokens", 200)
             if (jsonResponse) put("response_format", JSONObject().put("type", "json_object"))
         }
         val request = Request.Builder()
             .url(apiUrl)
             .header("Authorization", "Bearer $apiKey")
+            .apply { if (provider == VlmProvider.XIAOMI) header("api-key", apiKey) }
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
-        HTTP_CLIENT.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) error(httpErrorMessage(response.code))
-            return JSONObject(body).getJSONArray("choices")
-                .getJSONObject(0).getJSONObject("message").getString("content")
-        }
+        try {
+            HTTP_CLIENT.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val cat = categorizeHttpError(response.code)
+                    throw VlmApiException(cat, response.code, body, describeCategory(cat, response.code))
+                }
+                return JSONObject(body).getJSONArray("choices")
+                    .getJSONObject(0).getJSONObject("message").getString("content")
+            }
+        } catch (e: VlmApiException) { throw e }
+          catch (e: java.net.SocketTimeoutException) {
+              throw VlmApiException(VlmErrorCategory.NETWORK_ERROR, 0, "", "云端识别请求超时")
+          }
+          catch (e: java.net.ConnectException) {
+              throw VlmApiException(VlmErrorCategory.NETWORK_ERROR, 0, "", "无法连接云端识别服务")
+          }
+          catch (e: Exception) {
+              if (e is VlmApiException) throw e
+              throw VlmApiException(VlmErrorCategory.NETWORK_ERROR, 0, "", e.message ?: "网络异常")
+          }
     }
 
-    private fun httpErrorMessage(code: Int): String = when (code) {
-        401, 403 -> "云端识别密钥无效或无权限"
-        408 -> "云端识别请求超时"
-        429 -> "云端识别请求过于频繁，请稍后再试"
-        in 500..599 -> "云端识别服务暂时不可用"
-        else -> "云端识别请求失败（HTTP $code）"
+    private fun categorizeHttpError(code: Int): VlmErrorCategory = when (code) {
+        400 -> VlmErrorCategory.BAD_REQUEST
+        401 -> VlmErrorCategory.AUTH_FAILED
+        402 -> VlmErrorCategory.BALANCE_INSUFFICIENT
+        403 -> VlmErrorCategory.ACCESS_DENIED
+        404 -> VlmErrorCategory.NOT_FOUND
+        421 -> VlmErrorCategory.CONTENT_BLOCKED
+        429 -> VlmErrorCategory.RATE_LIMITED
+        in 500..599 -> VlmErrorCategory.SERVER_ERROR
+        else -> VlmErrorCategory.UNKNOWN
+    }
+
+    private fun describeCategory(cat: VlmErrorCategory, httpCode: Int): String = when (cat) {
+        VlmErrorCategory.BAD_REQUEST ->
+            "请求格式错误（$httpCode），请检查模型名称或联系开发者"
+        VlmErrorCategory.AUTH_FAILED ->
+            "API 密钥无效或类型不匹配（$httpCode），请在设置中重新配置"
+        VlmErrorCategory.BALANCE_INSUFFICIENT ->
+            "账户余额不足（$httpCode），请前往小米开放平台充值"
+        VlmErrorCategory.ACCESS_DENIED ->
+            "访问被拒绝（$httpCode），可能是地区限制或密钥被风控"
+        VlmErrorCategory.NOT_FOUND ->
+            "接口或模型不存在（$httpCode），请确认模型名称"
+        VlmErrorCategory.CONTENT_BLOCKED ->
+            "内容被安全审核拦截（$httpCode）"
+        VlmErrorCategory.RATE_LIMITED ->
+            "请求过于频繁（$httpCode），请稍后再试"
+        VlmErrorCategory.SERVER_ERROR ->
+            "云端服务暂时不可用（$httpCode），稍后自动重试"
+        VlmErrorCategory.NETWORK_ERROR ->
+            "网络连接异常，请检查网络设置"
+        VlmErrorCategory.UNKNOWN ->
+            "云端识别请求失败（HTTP $httpCode）"
     }
 
     private fun paymentPrompt(text: String, platform: PaymentPlatform, kind: PaymentKind): String = """
-        你是支付完成页结构化识别器。只分析一次已经完成的交易，绝不猜测。
-        预期平台：${platform.name}；预期交易种类：${kind.name}。
-        仅返回 JSON：
-        {"status":"SUCCESS|NOT_A_COMPLETED_PAYMENT","amount":"15.50","category":"餐饮|交通|购物|娱乐|犒劳|其它","kind":"${kind.name}","platform":"${platform.name}","note":"商户或对手方","trade_id":"交易号或空字符串","completed_at":"ISO-8601 或空字符串","confidence":0.0}
-        金额必须是实际扣款金额；如果页面失败、退款、取消、处理中或无法确定，status 必须为 NOT_A_COMPLETED_PAYMENT。
-        页面文本：
-        ${text.take(6_000)}
+        支付识别器。平台:${platform.name} 类型:${kind.name}
+        非完成页/退款/取消/处理中→status:0
+        JSON:{"s":1,"a":"12.50","c":"餐饮|交通|购物|娱乐|犒劳|其它","n":"商户","t":"交易号"}
+        文本:${text.take(3_000)}
     """.trimIndent()
 
     private fun genericBillPrompt(text: String): String = """
-        从支付页面文本中提取账单，只返回 JSON：
-        {"amount":"15.50","category":"餐饮|交通|购物|娱乐|犒劳|其它","note":"商户或备注"}
-        页面文本：${text.take(6_000)}
+        提取账单。JSON:{"a":"12.50","c":"餐饮|交通|购物|娱乐|犒劳|其它","n":"备注"}
+        文本:${text.take(3_000)}
     """.trimIndent()
 
     internal fun parsePaymentResponse(
@@ -173,38 +309,48 @@ class VlmClient(
         expectedKind: PaymentKind
     ): VlmTransactionResult? {
         val json = jsonObjectFrom(content)
-        if (json.string("status") != "SUCCESS") return null
-        val platform = runCatching { PaymentPlatform.valueOf(json.string("platform").orEmpty()) }.getOrNull() ?: return null
-        val kind = runCatching { PaymentKind.valueOf(json.string("kind").orEmpty()) }.getOrNull() ?: return null
-        if (platform != expectedPlatform || kind != expectedKind) return null
-        val confidence = json.string("confidence")?.toDoubleOrNull() ?: 0.0
+        val isSuccess = json.int("s") == 1 || json.string("status") == "SUCCESS"
+        if (!isSuccess) return null
+
+        if (json.string("status") == "SUCCESS") {
+            val platform = runCatching { PaymentPlatform.valueOf(json.string("platform").orEmpty()) }.getOrNull() ?: return null
+            val kind = runCatching { PaymentKind.valueOf(json.string("kind").orEmpty()) }.getOrNull() ?: return null
+            if (platform != expectedPlatform || kind != expectedKind) return null
+        }
+
+        val confidence = json.string("confidence")?.toDoubleOrNull() ?: 0.95
         if (confidence < MIN_CONFIDENCE || confidence > 1.0) return null
-        val amount = amountToFen(json.string("amount")) ?: return null
-        val category = if (kind == PaymentKind.MERCHANT_PAYMENT) {
-            json.string("category").orEmpty().takeIf { it in VALID_CATEGORIES } ?: "其它"
+        val amount = amountToFen(json.string("a") ?: json.string("amount")) ?: return null
+        val category = if (expectedKind == PaymentKind.MERCHANT_PAYMENT) {
+            (json.string("c") ?: json.string("category")).orEmpty().takeIf { it in VALID_CATEGORIES } ?: "其它"
         } else {
-            kind.defaultCategory
+            expectedKind.defaultCategory
+        }
+        val note = (json.string("n") ?: json.string("note")).orEmpty().ifBlank { "自动记账" }.take(MAX_NOTE_LENGTH)
+        val tradeId = (json.string("t") ?: json.string("trade_id")).orEmpty().trim().takeIf { it.isNotEmpty() }?.take(128)
+        val completedAt = json.string("completed_at")?.takeIf { it.isNotBlank() }?.let {
+            runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
         }
         return VlmTransactionResult(
             amount = amount,
             category = category,
-            note = json.string("note").orEmpty().ifBlank { "自动记账" }.take(MAX_NOTE_LENGTH),
-            platform = platform,
-            paymentKind = kind,
-            tradeId = json.string("trade_id").orEmpty().trim().takeIf { it.isNotEmpty() }?.take(128),
-            completedAt = json.string("completed_at")?.takeIf { it.isNotBlank() }?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() },
+            note = note,
+            platform = expectedPlatform,
+            paymentKind = expectedKind,
+            tradeId = tradeId,
+            completedAt = completedAt,
             confidence = confidence
         )
     }
 
     private fun parseGenericResponse(content: String): VlmTransactionResult? {
         val json = jsonObjectFrom(content)
-        val amount = amountToFen(json.string("amount")) ?: return null
-        val category = json.string("category").orEmpty().takeIf { it in VALID_CATEGORIES } ?: "其它"
+        val amount = amountToFen(json.string("a") ?: json.string("amount")) ?: return null
+        val category = (json.string("c") ?: json.string("category")).orEmpty().takeIf { it in VALID_CATEGORIES } ?: "其它"
         return VlmTransactionResult(
             amount = amount,
             category = category,
-            note = json.string("note").orEmpty().ifBlank { "自动记账" }.take(MAX_NOTE_LENGTH),
+            note = (json.string("n") ?: json.string("note")).orEmpty().ifBlank { "自动记账" }.take(MAX_NOTE_LENGTH),
             confidence = 1.0
         )
     }
@@ -219,6 +365,8 @@ class VlmClient(
     }
 
     private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+    private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
 
     private fun amountToFen(value: Any?): Long? = runCatching {
         val amount = BigDecimal(value.toString()).setScale(2, RoundingMode.HALF_UP)

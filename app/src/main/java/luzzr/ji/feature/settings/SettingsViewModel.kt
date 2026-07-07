@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import luzzr.ji.core.common.MoneyAmountParser
 import luzzr.ji.core.permissions.PermissionManager
 import luzzr.ji.core.vlm.VlmClient
+import luzzr.ji.core.vlm.VlmProvider
 import luzzr.ji.domain.model.Budget
 import luzzr.ji.domain.usecase.ObserveBudgetUseCase
 import luzzr.ji.domain.usecase.SaveBudgetUseCase
@@ -49,13 +50,20 @@ class SettingsViewModel(
             }
             .launchIn(viewModelScope)
 
-        // 初始化加载已保存的 API Key 和 Model (强制为 mimo-v2.5)
-        val savedApiKey = secureStorage.getApiKey()
-        val savedModel = "mimo-v2.5"
-        val savedApiUrl = sharedPreferences.getString(VlmClient.PREF_API_URL, VlmClient.DEFAULT_API_URL)
-            ?: VlmClient.DEFAULT_API_URL
-        sharedPreferences.edit { putString("opencode_model_id", savedModel) }
-        _uiState.update { it.copy(opencodeApiKey = savedApiKey, opencodeApiUrl = savedApiUrl, opencodeModel = savedModel) }
+        // 初始化加载已保存的 Provider, Model, 以及当前 Provider 的 API Key
+        val savedProviderName = sharedPreferences.getString(VlmClient.PREF_PROVIDER, VlmProvider.XIAOMI.name)
+            ?: VlmProvider.XIAOMI.name
+        val savedProvider = runCatching { VlmProvider.valueOf(savedProviderName) }.getOrDefault(VlmProvider.XIAOMI)
+        val (savedApiUrl, savedModel) = VlmClient.resolveEndpoint(savedProvider, sharedPreferences)
+        val savedApiKey = secureStorage.getApiKey(savedProvider)
+        _uiState.update {
+            it.copy(
+                vlmProvider = savedProvider,
+                opencodeApiKey = savedApiKey,
+                opencodeApiUrl = savedApiUrl,
+                opencodeModel = savedModel
+            )
+        }
     }
 
     fun onEvent(event: SettingsUiEvent) {
@@ -71,6 +79,19 @@ class SettingsViewModel(
             }
             is SettingsUiEvent.ApiUrlChanged -> {
                 _uiState.update { it.copy(opencodeApiUrl = event.value, isApiKeySaved = false) }
+            }
+            is SettingsUiEvent.ProviderChanged -> {
+                val provider = event.provider
+                val existingKey = secureStorage.getApiKey(provider)
+                _uiState.update {
+                    it.copy(
+                        vlmProvider = provider,
+                        opencodeApiKey = existingKey,
+                        opencodeApiUrl = provider.defaultApiUrl,
+                        opencodeModel = provider.defaultModel,
+                        isApiKeySaved = existingKey.isNotBlank()
+                    )
+                }
             }
             is SettingsUiEvent.ModelChanged -> {
                 _uiState.update { it.copy(opencodeModel = "mimo-v2.5", isApiKeySaved = false) }
@@ -157,15 +178,19 @@ class SettingsViewModel(
             _uiState.update { it.copy(errorMessage = "云端服务地址必须是 HTTPS 链接") }
             return
         }
-        val model = "mimo-v2.5"
+        val provider = _uiState.value.vlmProvider
+        val model = provider.defaultModel
+        secureStorage.saveApiKey(provider, key)
+        // Also keep legacy key in sync for backward compatibility
         secureStorage.saveApiKey(key)
         sharedPreferences.edit {
+            putString(VlmClient.PREF_PROVIDER, provider.name)
             putString("opencode_model_id", model)
             putString(VlmClient.PREF_API_URL, apiUrl)
         }
         _uiState.update { it.copy(isApiKeySaved = true, opencodeModel = model, opencodeApiUrl = apiUrl, errorMessage = null) }
         viewModelScope.launch {
-            _uiEffect.emit(SettingsUiEffect.ShowToast("API 密钥与模型配置已保存"))
+            _uiEffect.emit(SettingsUiEffect.ShowToast("${provider.displayName} API 密钥已保存"))
         }
     }
 
@@ -173,6 +198,7 @@ class SettingsViewModel(
         val apiKey = _uiState.value.opencodeApiKey.trim()
         val model = _uiState.value.opencodeModel.trim()
         val apiUrl = normalizedApiUrlOrNull(_uiState.value.opencodeApiUrl)
+        val provider = _uiState.value.vlmProvider
         if (apiKey.isBlank()) {
             _uiState.update { it.copy(connectionTestResult = "Failed: 密钥为空") }
             return
@@ -185,12 +211,12 @@ class SettingsViewModel(
         _uiState.update { it.copy(isTestingConnection = true, connectionTestResult = null) }
         viewModelScope.launch {
             try {
-                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl)
+                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl, provider = provider)
                 val reply = client.testChat("Ping")
                 _uiState.update {
                     it.copy(
                         isTestingConnection = false,
-                        connectionTestResult = "Success: 连接正常，模型回复: $reply"
+                        connectionTestResult = "Success: ${provider.displayName} 连接正常，模型回复: $reply"
                     )
                 }
             } catch (e: Exception) {
@@ -208,6 +234,7 @@ class SettingsViewModel(
         val apiKey = _uiState.value.opencodeApiKey.trim()
         val model = _uiState.value.opencodeModel.trim()
         val apiUrl = normalizedApiUrlOrNull(_uiState.value.opencodeApiUrl)
+        val provider = _uiState.value.vlmProvider
         val input = _uiState.value.chatInput.trim()
         if (input.isBlank()) return
         if (apiKey.isBlank()) {
@@ -232,7 +259,7 @@ class SettingsViewModel(
 
         viewModelScope.launch {
             try {
-                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl)
+                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl, provider = provider)
                 val reply = client.testChat(input)
                 _uiState.update {
                     it.copy(
@@ -255,6 +282,7 @@ class SettingsViewModel(
         val apiKey = _uiState.value.opencodeApiKey.trim()
         val model = _uiState.value.opencodeModel.trim()
         val apiUrl = normalizedApiUrlOrNull(_uiState.value.opencodeApiUrl)
+        val provider = _uiState.value.vlmProvider
         if (apiKey.isBlank()) {
             val newHistory = _uiState.value.chatHistory + ChatMessage("user", prompt, imageLabel = "图片消息") + ChatMessage("ai", "错误：未配置 API 密钥")
             _uiState.update { it.copy(chatHistory = newHistory) }
@@ -276,7 +304,7 @@ class SettingsViewModel(
 
         viewModelScope.launch {
             try {
-                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl)
+                val client = VlmClient(apiKey = apiKey, modelId = model, apiUrl = apiUrl, provider = provider)
                 val reply = client.testChatWithImage(prompt, imageBytes)
                 _uiState.update {
                     it.copy(
@@ -296,7 +324,7 @@ class SettingsViewModel(
     }
 
     private fun normalizedApiUrlOrNull(value: String): String? {
-        val trimmed = value.trim().ifBlank { VlmClient.DEFAULT_API_URL }
+        val trimmed = value.trim().ifBlank { _uiState.value.vlmProvider.defaultApiUrl }
         return trimmed.takeIf { it.startsWith("https://", ignoreCase = true) }
     }
 }

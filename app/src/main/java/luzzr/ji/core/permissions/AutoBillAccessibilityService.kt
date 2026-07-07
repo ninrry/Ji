@@ -26,6 +26,8 @@ class AutoBillAccessibilityService : AccessibilityService() {
         private const val TAG = "AutoBill"
         private const val MAX_DEDUP_ENTRIES = 64
         private const val MAX_NODE_COUNT = 300
+        /** Minimum interval between processing the same platform+kind, to avoid rapid re-triggers. */
+        private const val PLATFORM_KIND_COOLDOWN_MS = 3_000L
     }
 
     private val serviceJob = SupervisorJob()
@@ -37,6 +39,8 @@ class AutoBillAccessibilityService : AccessibilityService() {
     private data class RecentFingerprint(val capturedAt: Long, val dedupWindowMs: Long)
 
     private val recentFingerprints = LinkedHashMap<String, RecentFingerprint>(MAX_DEDUP_ENTRIES, 0.75f, true)
+    /** Last process time per (platform, kind) pair for cooldown gating. */
+    private val lastProcessByPlatformKind = HashMap<String, Long>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -58,9 +62,18 @@ class AutoBillAccessibilityService : AccessibilityService() {
             val texts = ArrayList<String>()
             collectNodeTexts(root, texts, intArrayOf(0))
             val fullText = PaymentFingerprint.normalizedText(texts.joinToString("\n"))
+            if (fullText.length < 4) return  // Skip near-empty events early
             val signal = PaymentCompletionClassifier.from(this, packageName, fullText) ?: return
             val identity = PaymentFingerprint.captureIdentity(signal.platform, signal.kind, fullText)
             if (!shouldProcess(identity)) return
+            // Platform+kind cooldown: avoid rapid re-triggers for the same payment context
+            val pkKey = "${signal.platform.name}:${signal.kind.name}"
+            val now = System.currentTimeMillis()
+            synchronized(lastProcessByPlatformKind) {
+                val lastTime = lastProcessByPlatformKind[pkKey] ?: 0L
+                if (now - lastTime < PLATFORM_KIND_COOLDOWN_MS) return
+                lastProcessByPlatformKind[pkKey] = now
+            }
             captureAndQueue(signal.platform, signal.kind, fullText, identity)
         } finally {
             @Suppress("DEPRECATION")
@@ -179,10 +192,10 @@ class AutoBillAccessibilityService : AccessibilityService() {
     }
 
     private fun compress(bitmap: Bitmap): ByteArray {
-        val scaled = scaleBitmapDown(bitmap, 720)
+        val scaled = scaleBitmapDown(bitmap, 540)
         return try {
             ByteArrayOutputStream().use { output ->
-                scaled.compress(Bitmap.CompressFormat.JPEG, 75, output)
+                scaled.compress(Bitmap.CompressFormat.JPEG, 60, output)
                 output.toByteArray()
             }
         } finally {
@@ -204,7 +217,7 @@ class AutoBillAccessibilityService : AccessibilityService() {
         val height = bounds.outHeight
         if (width <= 0 || height <= 0) return@runCatching null
         val options = BitmapFactory.Options().apply {
-            inSampleSize = calculateInSampleSize(width, height, 720)
+            inSampleSize = calculateInSampleSize(width, height, 540)
             inPreferredConfig = Bitmap.Config.RGB_565
         }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
