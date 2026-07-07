@@ -65,6 +65,8 @@ $env:JI_KEY_PASSWORD = "<key-password>"
 
 ## 当前发布版本
 
+`v1.2.0`：新增小米 MiMo API 直连与供应商隔离——VLM 调用支持小米直连（api.xiaomimimo.com）和 OpenCode Go 两种供应商，API Key 按供应商独立加密存储；切换供应商时自动加载已保存的密钥。新增结构化 API 错误反馈机制——402 余额不足高优先级通知引导充值，429/5xx 自动重试，401/403/404 等永久错误提示检查配置。优化触发精准度与成本控制——图片压缩降至 540px/quality 60、指纹文本截断至 3000 字符、prompt 精简、内存级快速去重检查。
+
 `v1.1.0`：支付识别规则引擎重构——将硬编码关键词列表提取为 JSON 数据驱动的 `PaymentCompletionRuleEngine`，每次分类返回可追踪的 `PaymentRuleTrace`（ruleId、decision、matchedKeywords）。新增 23 个 fixture 测试覆盖微信/支付宝/京东全部 accept/reject 场景。Room schema v5、统计图表组件、Home/ExtraBill/Settings 模块重构拆分、新增 instrumented tests。
 
 `v1.0.7`：吸收安全审查反馈，支持配置 HTTPS 云端识别地址、API Key 脱敏输入、临时截图 AES-GCM 加密落盘、自动识别失败通知；金额转分改为 BigDecimal，修复通知 ID hash 碰撞和自动账单冲突时 transactionId=0 的风险。
