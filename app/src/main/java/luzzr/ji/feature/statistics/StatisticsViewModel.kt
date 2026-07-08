@@ -85,10 +85,8 @@ class StatisticsViewModel(
         }
 
         val categorySpends = calculateCategorySpends(thisWeekExpenses)
-        val spentDays = thisWeekExpenses.map {
-            Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate()
-        }.distinct().size
-        val averageSpend = if (spentDays > 0) totalSpend.toDouble() / spentDays else 0.0
+        val daysElapsed = now.dayOfWeek.value // 1(Mon)..7(Sun)
+        val averageSpend = if (daysElapsed > 0) totalSpend.toDouble() / daysElapsed else 0.0
         val maxSpend = thisWeekExpenses.maxOfOrNull { it.amount } ?: 0L
         val trendComparison = formatTrendComparison(totalSpend, lastWeekTotal, "上周")
 
@@ -133,10 +131,8 @@ class StatisticsViewModel(
         }
 
         val categorySpends = calculateCategorySpends(thisMonthExpenses)
-        val spentDays = thisMonthExpenses.map {
-            Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate()
-        }.distinct().size
-        val averageSpend = if (spentDays > 0) totalSpend.toDouble() / spentDays else 0.0
+        val daysElapsed = now.dayOfMonth
+        val averageSpend = if (daysElapsed > 0) totalSpend.toDouble() / daysElapsed else 0.0
         val maxSpend = thisMonthExpenses.maxOfOrNull { it.amount } ?: 0L
         val trendComparison = formatTrendComparison(totalSpend, lastMonthTotal, "上月")
 
@@ -180,10 +176,8 @@ class StatisticsViewModel(
         }
 
         val categorySpends = calculateCategorySpends(thisYearExpenses)
-        val spentMonths = thisYearExpenses.map {
-            Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate().monthValue
-        }.distinct().size
-        val averageSpend = if (spentMonths > 0) totalSpend.toDouble() / spentMonths else 0.0
+        val monthsElapsed = now.monthValue
+        val averageSpend = if (monthsElapsed > 0) totalSpend.toDouble() / monthsElapsed else 0.0
         val maxSpend = thisYearExpenses.maxOfOrNull { it.amount } ?: 0L
         val trendComparison = formatTrendComparison(totalSpend, lastYearTotal, "去年")
 
